@@ -1,4 +1,8 @@
-week1-webhook/venv/
-week1-webhook/.env
-week1-webhook/__pycache__/
+member4_week1_guide.html
+Timeline_Orchestra.pdf
+venv/
+__pycache__/
 *.pyc
+.env
+dev_log.md
+events.json

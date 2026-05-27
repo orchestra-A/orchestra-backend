@@ -31,7 +31,7 @@ Here is a brief log of your weekly tasks and accomplishments.
 - **First live GitHub event**: Created a dummy GitHub repository (`webhook-test-repo`) and successfully hooked up the local ngrok tunnel.
 - Pushed a commit to test the webhook and verified that the FastAPI server received, logged, and parsed the real JSON payload properly. Both terminal and GitHub delivery logs confirmed successful transmission.
 
-### Day 7
+### Day 5
 - **Code Polish**: Added descriptive comments to `main.py` explaining each section to improve readability for the team.
 - **Documentation**: Wrote a concise `README.md` with instructions on how to install, run, and test the webhook listener locally.
 - Ready to push code with screenshots and demonstrate real-time event capture to the team.
