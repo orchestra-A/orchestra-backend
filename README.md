@@ -57,5 +57,9 @@ ngrok http 8000
 ---
 
 ## Contributors
-- **Infrastructure Engineer** (Member 3)
-- **Data Pipeline Engineer** (Member 4)
+- **Infrastructure Engineer** (Sarvagya)
+- **Data Pipeline Engineer** (arnav)
+
+## Current Status
+
+- Week 1: Complete
