@@ -32,9 +32,9 @@ def check(test_name: str, condition: bool, detail: str = ""):
 
 
 def section(title: str):
-    print(f"\n{'─'*50}")
+    print(f"\n{'-'*50}")
     print(f"  {title}")
-    print(f"{'─'*50}")
+    print(f"{'-'*50}")
 
 
 # ─────────────────────────────────────────────
@@ -149,9 +149,34 @@ print(f"\n  → Summary: {event.action_summary}")
 
 
 # ─────────────────────────────────────────────
-# Test 5: Discord Message (raw Discord API shape)
+# Test 5: GitHub Release Event
 # ─────────────────────────────────────────────
-section("Test 5: Discord Message Event")
+section("Test 5: GitHub Release Event")
+
+release_payload = {
+    "action": "published",
+    "release": {
+        "tag_name": "v1.0.0",
+        "name": "First Release",
+        "html_url": "https://github.com/team/orchestra/releases/tag/v1.0.0"
+    },
+    "sender": {"login": "arnav"},
+    "repository": {"full_name": "team/orchestra"}
+}
+
+event = normalize_event("release", release_payload)
+check("Platform is github", event.platform == "github")
+check("Event type is release", event.event_type == "release")
+check("Action in summary", "published" in event.action_summary)
+check("Tag in summary", "v1.0.0" in event.action_summary)
+check("Release name in metadata", event.raw_metadata["release_name"] == "First Release")
+print(f"\n  → Summary: {event.action_summary}")
+
+
+# ─────────────────────────────────────────────
+# Test 6: Discord Message (raw Discord API shape)
+# ─────────────────────────────────────────────
+section("Test 6: Discord Message Event")
 
 discord_payload = {
     "id": "1234567890123456789",
@@ -178,9 +203,9 @@ print(f"\n  → Summary: {event.action_summary}")
 
 
 # ─────────────────────────────────────────────
-# Test 6: Figma Event
+# Test 7: Figma Event
 # ─────────────────────────────────────────────
-section("Test 6: Figma Event")
+section("Test 7: Figma Event")
 
 figma_payload = {
     "event_type": "FILE_UPDATE",
@@ -201,9 +226,9 @@ print(f"\n  → Summary: {event.action_summary}")
 
 
 # ─────────────────────────────────────────────
-# Test 7: Unknown Event Type (graceful fallback)
+# Test 8: Unknown Event Type (graceful fallback)
 # ─────────────────────────────────────────────
-section("Test 6: Unknown Event Type — Graceful Fallback")
+section("Test 8: Unknown Event Type — Graceful Fallback")
 
 unknown_payload = {"some_random": "data", "from": "an_unknown_platform"}
 event = normalize_event("figma_update", unknown_payload)
@@ -216,9 +241,9 @@ print(f"\n  → Summary: {event.action_summary}")
 
 
 # ─────────────────────────────────────────────
-# Test 7: Missing/Empty Fields (crash safety)
+# Test 9: Missing/Empty Fields (crash safety)
 # ─────────────────────────────────────────────
-section("Test 7: Missing Fields — No Crash")
+section("Test 9: Missing Fields — No Crash")
 
 try:
     # Push with no pusher, no commits, no repo
@@ -241,9 +266,9 @@ except Exception as e:
 
 
 # ─────────────────────────────────────────────
-# Test 8: JSON round-trip (save + reload)
+# Test 10: JSON round-trip (save + reload)
 # ─────────────────────────────────────────────
-section("Test 8: JSON Serialization Round-Trip")
+section("Test 10: JSON Serialization Round-Trip")
 
 original = normalize_event("push", push_payload)
 json_str = original.model_dump_json()
@@ -263,12 +288,12 @@ total = len(results)
 passed = sum(results)
 failed = total - passed
 
-print(f"\n{'═'*50}")
+print(f"\n{'='*50}")
 print(f"  Results: {passed}/{total} tests passed")
 if failed:
     print(f"  [WARNING] {failed} test(s) failed — check output above")
 else:
     print(f"  [SUCCESS] All tests passed — normalizer is solid!")
-print(f"{'═'*50}\n")
+print(f"{'='*50}\n")
 
 sys.exit(0 if failed == 0 else 1)
