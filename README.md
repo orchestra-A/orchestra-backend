@@ -48,7 +48,7 @@ uvicorn main:app --reload --port 8000
 # Expose the local server to the internet using ngrok
 ngrok http 8000
 ```
-*(Note: A permanent ngrok URL for live webhooks will be provided by Member 3).*
+*(Note: A permanent ngrok URL for live webhooks will be provided later).*
 
 ### 4. Testing Endpoints
 - **Receive Webhook (Local Test):**
@@ -62,4 +62,4 @@ ngrok http 8000
 ## Current Status
 
 - **Week 1:** Complete (Infrastructure boilerplate).
-- **Week 2:** Complete (Semantic Data Normalizer merged with Member 3's infrastructure). Live tests for Day 4 and Day 5 were conducted on a temporary ngrok URL; pending a permanent URL from Member 3 for final Discord and Figma webhooks.
+- **Week 2:** In progress.
