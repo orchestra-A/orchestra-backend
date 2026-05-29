@@ -6,3 +6,12 @@ __pycache__/
 .env
 dev_log.md
 events.json
+
+# Test scripts & Backup copies
+main (1).py
+test_endpoints_script.py
+test_live_webhooks.py
+
+# Old directories / Instructions
+week1-webhook/
+week2_files/
