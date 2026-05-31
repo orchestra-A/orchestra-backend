@@ -203,6 +203,8 @@ async def get_tasks():
     tasks = [
         {
             "id": "task_001",
+            "order": 1,
+            "project_id": "proj_orchestra",
             "title": "Set up Neo4j database schema",
             "description": "Define node types and relationship models for the knowledge graph.",
             "status": "completed",
@@ -214,6 +216,8 @@ async def get_tasks():
         },
         {
             "id": "task_002",
+            "order": 2,
+            "project_id": "proj_orchestra",
             "title": "Build semantic data normalizer",
             "description": "Scrub incoming platform events into clean uniform data blocks.",
             "status": "in_progress",
@@ -225,6 +229,8 @@ async def get_tasks():
         },
         {
             "id": "task_003",
+            "order": 3,
+            "project_id": "proj_orchestra",
             "title": "Connect reactflow canvas to backend",
             "description": "Replace static mock files with live database endpoints.",
             "status": "in_progress",
@@ -236,6 +242,8 @@ async def get_tasks():
         },
         {
             "id": "task_004",
+            "order": 4,
+            "project_id": "proj_orchestra",
             "title": "Implement Connect Workspaces UI",
             "description": "Build authentication screens for team tool integrations.",
             "status": "in_progress",
@@ -247,6 +255,8 @@ async def get_tasks():
         },
         {
             "id": "task_005",
+            "order": 5,
+            "project_id": "proj_orchestra",
             "title": "Configure Discord webhook listener",
             "description": "Expand FastAPI server to natively catch Discord events.",
             "status": "completed",
@@ -258,6 +268,8 @@ async def get_tasks():
         },
         {
             "id": "task_006",
+            "order": 6,
+            "project_id": "proj_orchestra",
             "title": "Configure Figma webhook listener",
             "description": "Expand FastAPI server to natively catch Figma design events.",
             "status": "completed",
@@ -269,6 +281,8 @@ async def get_tasks():
         },
         {
             "id": "task_007",
+            "order": 7,
+            "project_id": "proj_orchestra",
             "title": "LLM JSON extraction prompting",
             "description": "Force LLM to respond only in structured valid JSON with no conversational output.",
             "status": "completed",
@@ -280,6 +294,8 @@ async def get_tasks():
         },
         {
             "id": "task_008",
+            "order": 8,
+            "project_id": "proj_orchestra",
             "title": "GitHub State Machine setup",
             "description": "Auto-update task status when matching pull requests are submitted.",
             "status": "todo",
@@ -288,6 +304,58 @@ async def get_tasks():
             "priority": "high",
             "created_at": "2025-06-01T08:00:00Z",
             "updated_at": "2025-06-01T08:00:00Z"
+        },
+        {
+            "id": "task_009",
+            "order": 1,
+            "project_id": "proj_marketing",
+            "title": "Design new landing page",
+            "description": "Create wireframes and mockups for the marketing site.",
+            "status": "completed",
+            "assigned_to": "Member 6 — Interface Developer",
+            "platform": "figma",
+            "priority": "high",
+            "created_at": "2025-06-02T08:00:00Z",
+            "updated_at": "2025-06-02T12:00:00Z"
+        },
+        {
+            "id": "task_010",
+            "order": 2,
+            "project_id": "proj_marketing",
+            "title": "Write copy for landing page",
+            "description": "Draft marketing copy and value propositions.",
+            "status": "todo",
+            "assigned_to": "Member 1 — Agent Architect",
+            "platform": "discord",
+            "priority": "medium",
+            "created_at": "2025-06-02T09:00:00Z",
+            "updated_at": "2025-06-02T09:00:00Z"
+        },
+        {
+            "id": "task_011",
+            "order": 1,
+            "project_id": "proj_mobile_app",
+            "title": "Setup React Native CLI",
+            "description": "Initialize the bare React Native project.",
+            "status": "todo",
+            "assigned_to": "Member 5 — Interactive Canvas Specialist",
+            "platform": "github",
+            "priority": "high",
+            "created_at": "2025-06-03T10:00:00Z",
+            "updated_at": "2025-06-03T10:00:00Z"
+        },
+        {
+            "id": "task_012",
+            "order": 1,
+            "project_id": "proj_analytics",
+            "title": "Define tracking plan",
+            "description": "Map out all funnel events for mixpanel.",
+            "status": "in_progress",
+            "assigned_to": "Member 4 — Data Pipeline Engineer",
+            "platform": "figma",
+            "priority": "medium",
+            "created_at": "2025-06-04T11:00:00Z",
+            "updated_at": "2025-06-04T11:00:00Z"
         }
     ]
 
