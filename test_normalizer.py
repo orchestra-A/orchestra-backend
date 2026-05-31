@@ -65,7 +65,7 @@ check("Commits in metadata", len(event.raw_metadata["commits"]) == 2)
 check("Commit IDs shortened to 7 chars", len(event.raw_metadata["commits"][0]["id"]) == 7)
 check("Has unique ID", bool(event.id))
 check("Has timestamp", bool(event.timestamp))
-print(f"\n  → Summary: {event.action_summary}")
+print(f"\n  -> Summary: {event.action_summary}")
 
 
 # ─────────────────────────────────────────────
@@ -95,7 +95,7 @@ check("PR number in summary", "#42" in event.action_summary)
 check("PR title in summary", "normalizer" in event.action_summary)
 check("Base branch in metadata", event.raw_metadata["base_branch"] == "main")
 check("Merged=False in metadata", event.raw_metadata["merged"] == False)
-print(f"\n  → Summary: {event.action_summary}")
+print(f"\n  -> Summary: {event.action_summary}")
 
 
 # ─────────────────────────────────────────────
@@ -120,7 +120,7 @@ pr_merged_payload = {
 event = normalize_event("pull_request", pr_merged_payload)
 check("Merged flag captured", event.raw_metadata["merged"] == True)
 check("Action is closed", event.raw_metadata["action"] == "closed")
-print(f"\n  → Summary: {event.action_summary}")
+print(f"\n  -> Summary: {event.action_summary}")
 
 
 # ─────────────────────────────────────────────
@@ -145,7 +145,7 @@ check("Platform is github", event.platform == "github")
 check("Event type is issue", event.event_type == "issue")
 check("Issue number in summary", "#7" in event.action_summary)
 check("Issue state in metadata", event.raw_metadata["issue_state"] == "open")
-print(f"\n  → Summary: {event.action_summary}")
+print(f"\n  -> Summary: {event.action_summary}")
 
 
 # ─────────────────────────────────────────────
@@ -170,7 +170,7 @@ check("Event type is release", event.event_type == "release")
 check("Action in summary", "published" in event.action_summary)
 check("Tag in summary", "v1.0.0" in event.action_summary)
 check("Release name in metadata", event.raw_metadata["release_name"] == "First Release")
-print(f"\n  → Summary: {event.action_summary}")
+print(f"\n  -> Summary: {event.action_summary}")
 
 
 # ─────────────────────────────────────────────
@@ -199,7 +199,7 @@ check("Channel extracted", event.channel == "987654321")
 check("Content in metadata", "normalizer" in event.raw_metadata["content"])
 check("Long message truncated in summary", "..." in event.action_summary or len(event.action_summary) < 120)
 check("Guild_id preserved", event.raw_metadata["guild_id"] == "111222333")
-print(f"\n  → Summary: {event.action_summary}")
+print(f"\n  -> Summary: {event.action_summary}")
 
 
 # ─────────────────────────────────────────────
@@ -222,7 +222,7 @@ check("Platform is figma", event.platform == "figma")
 check("Event type is extracted", event.event_type == "FILE_UPDATE")
 check("Actor extracted", event.actor == "designer_dave")
 check("Summary includes file name", "Orchestra Dashboard UI" in event.action_summary)
-print(f"\n  → Summary: {event.action_summary}")
+print(f"\n  -> Summary: {event.action_summary}")
 
 
 # ─────────────────────────────────────────────
@@ -237,7 +237,7 @@ check("Does NOT crash", True)  # If we got here, it didn't crash
 check("Platform is unknown", event.platform == "unknown")
 check("Event type preserved", event.event_type == "figma_update")
 check("Raw body preserved in metadata", event.raw_metadata == unknown_payload)
-print(f"\n  → Summary: {event.action_summary}")
+print(f"\n  -> Summary: {event.action_summary}")
 
 
 # ─────────────────────────────────────────────
