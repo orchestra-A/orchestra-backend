@@ -2,7 +2,7 @@ from datetime import datetime, timezone
 import json
 import sys
 import os
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Request, Response
 
 # Import Member 4's normalizer and models
 from normalizer import normalize_event
@@ -395,12 +395,10 @@ async def get_tasks():
 async def get_events():
     filepath = "events.json"
     if not os.path.exists(filepath):
-        return {"total": 0, "events": []}
+        events_data = {"total": 0, "events": []}
+    else:
+        with open(filepath, "r") as f:
+            events_data = {"total": len(json.load(f)), "events": json.load(open(filepath))}
 
-    with open(filepath, "r") as f:
-        events = json.load(f)
-
-    return {
-        "total": len(events),
-        "events": events
-    }
+    formatted_json = json.dumps(events_data, indent=4)
+    return Response(content=formatted_json, media_type="application/json")
