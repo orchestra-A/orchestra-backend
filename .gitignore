@@ -16,3 +16,6 @@ test_live_webhooks.py
 week1-webhook/
 week2_files/
 week3_files/
+# -----------------
+events.json
+tasks.json

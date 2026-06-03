@@ -2,7 +2,7 @@ from datetime import datetime, timezone
 import json
 import sys
 import os
-from fastapi import FastAPI, Request, Response
+from fastapi import FastAPI, Request
 
 # Import Member 4's normalizer and models
 from normalizer import normalize_event
@@ -14,17 +14,203 @@ from models import NormalizedEvent
 app = FastAPI(
     title="Timeline Orchestra Backend",
     description="Infrastructure layer for Timeline Orchestra",
-    version="0.3.0"
+    version="0.4.0"
 )
+
+# =====================================================================
+# Environment Variables
+# GitHub OAuth credentials — stored in .env file, never hardcoded
+# =====================================================================
+GITHUB_CLIENT_ID = os.getenv("GITHUB_CLIENT_ID")
+GITHUB_CLIENT_SECRET = os.getenv("GITHUB_CLIENT_SECRET")
+
+
+# =====================================================================
+# STARTUP — Initialize tasks.json
+# =====================================================================
+# When server starts, if tasks.json doesn't exist yet,
+# create it from our hardcoded task list.
+# This gives the State Machine something to read and update.
+# =====================================================================
+def initialize_tasks_file():
+    if not os.path.exists("tasks.json"):
+        tasks_data = {
+            "total": 12,
+            "tasks": [
+                {
+                    "id": "task_001",
+                    "order": 1,
+                    "project_id": "proj_orchestra",
+                    "title": "Set up Neo4j database schema",
+                    "description": "Define node types and relationship models.",
+                    "status": "completed",
+                    "assigned_to": "Member 2 — Knowledge Graph Engineer",
+                    "platform": "github",
+                    "priority": "high",
+                    "created_at": "2025-05-28T09:00:00Z",
+                    "updated_at": "2025-05-30T14:30:00Z"
+                },
+                {
+                    "id": "task_002",
+                    "order": 2,
+                    "project_id": "proj_orchestra",
+                    "title": "Build semantic data normalizer",
+                    "description": "Scrub incoming platform events into clean uniform data blocks.",
+                    "status": "in_progress",
+                    "assigned_to": "Member 4 — Data Pipeline Engineer",
+                    "platform": "github",
+                    "priority": "high",
+                    "created_at": "2025-05-28T09:00:00Z",
+                    "updated_at": "2025-06-01T10:00:00Z"
+                },
+                {
+                    "id": "task_003",
+                    "order": 3,
+                    "project_id": "proj_orchestra",
+                    "title": "Connect reactflow canvas to backend",
+                    "description": "Replace static mock files with live database endpoints.",
+                    "status": "in_progress",
+                    "assigned_to": "Member 5 — Interactive Canvas Specialist",
+                    "platform": "figma",
+                    "priority": "medium",
+                    "created_at": "2025-05-29T11:00:00Z",
+                    "updated_at": "2025-05-31T16:00:00Z"
+                },
+                {
+                    "id": "task_004",
+                    "order": 4,
+                    "project_id": "proj_orchestra",
+                    "title": "Implement Connect Workspaces UI",
+                    "description": "Build authentication screens for team tool integrations.",
+                    "status": "in_progress",
+                    "assigned_to": "Member 6 — Interface Developer",
+                    "platform": "figma",
+                    "priority": "medium",
+                    "created_at": "2025-05-29T11:00:00Z",
+                    "updated_at": "2025-06-01T09:00:00Z"
+                },
+                {
+                    "id": "task_005",
+                    "order": 5,
+                    "project_id": "proj_orchestra",
+                    "title": "Configure Discord webhook listener",
+                    "description": "Expand FastAPI server to natively catch Discord events.",
+                    "status": "completed",
+                    "assigned_to": "Member 3 — Infrastructure Engineer",
+                    "platform": "discord",
+                    "priority": "high",
+                    "created_at": "2025-06-01T08:00:00Z",
+                    "updated_at": "2025-06-01T12:00:00Z"
+                },
+                {
+                    "id": "task_006",
+                    "order": 6,
+                    "project_id": "proj_orchestra",
+                    "title": "Configure Figma webhook listener",
+                    "description": "Expand FastAPI server to natively catch Figma design events.",
+                    "status": "completed",
+                    "assigned_to": "Member 3 — Infrastructure Engineer",
+                    "platform": "figma",
+                    "priority": "high",
+                    "created_at": "2025-06-01T08:00:00Z",
+                    "updated_at": "2025-06-01T12:00:00Z"
+                },
+                {
+                    "id": "task_007",
+                    "order": 7,
+                    "project_id": "proj_orchestra",
+                    "title": "LLM JSON extraction prompting",
+                    "description": "Force LLM to respond only in structured valid JSON.",
+                    "status": "completed",
+                    "assigned_to": "Member 1 — Agent Architect",
+                    "platform": "github",
+                    "priority": "high",
+                    "created_at": "2025-05-28T09:00:00Z",
+                    "updated_at": "2025-05-30T11:00:00Z"
+                },
+                {
+                    "id": "task_008",
+                    "order": 8,
+                    "project_id": "proj_orchestra",
+                    "title": "GitHub State Machine setup",
+                    "description": "Auto-update task status when matching pull requests are submitted.",
+                    "status": "todo",
+                    "assigned_to": "Member 3 — Infrastructure Engineer",
+                    "platform": "github",
+                    "priority": "high",
+                    "created_at": "2025-06-01T08:00:00Z",
+                    "updated_at": "2025-06-01T08:00:00Z"
+                },
+                {
+                    "id": "task_009",
+                    "order": 1,
+                    "project_id": "proj_marketing",
+                    "title": "Design new landing page",
+                    "description": "Create wireframes and mockups for the marketing site.",
+                    "status": "completed",
+                    "assigned_to": "Member 6 — Interface Developer",
+                    "platform": "figma",
+                    "priority": "high",
+                    "created_at": "2025-06-02T08:00:00Z",
+                    "updated_at": "2025-06-02T12:00:00Z"
+                },
+                {
+                    "id": "task_010",
+                    "order": 2,
+                    "project_id": "proj_marketing",
+                    "title": "Write copy for landing page",
+                    "description": "Draft marketing copy and value propositions.",
+                    "status": "todo",
+                    "assigned_to": "Member 1 — Agent Architect",
+                    "platform": "discord",
+                    "priority": "medium",
+                    "created_at": "2025-06-02T09:00:00Z",
+                    "updated_at": "2025-06-02T09:00:00Z"
+                },
+                {
+                    "id": "task_011",
+                    "order": 1,
+                    "project_id": "proj_mobile_app",
+                    "title": "Setup React Native CLI",
+                    "description": "Initialize the bare React Native project.",
+                    "status": "todo",
+                    "assigned_to": "Member 5 — Interactive Canvas Specialist",
+                    "platform": "github",
+                    "priority": "high",
+                    "created_at": "2025-06-03T10:00:00Z",
+                    "updated_at": "2025-06-03T10:00:00Z"
+                },
+                {
+                    "id": "task_012",
+                    "order": 1,
+                    "project_id": "proj_analytics",
+                    "title": "Define tracking plan",
+                    "description": "Map out all funnel events for mixpanel.",
+                    "status": "in_progress",
+                    "assigned_to": "Member 4 — Data Pipeline Engineer",
+                    "platform": "figma",
+                    "priority": "medium",
+                    "created_at": "2025-06-04T11:00:00Z",
+                    "updated_at": "2025-06-04T11:00:00Z"
+                }
+            ]
+        }
+        with open("tasks.json", "w") as f:
+            json.dump(tasks_data, f, indent=2)
+        print("[STARTUP] tasks.json initialized successfully")
+        sys.stdout.flush()
+    else:
+        print("[STARTUP] tasks.json already exists, skipping initialization")
+        sys.stdout.flush()
+
+# Run on startup
+initialize_tasks_file()
+
 
 # =====================================================================
 # Shared Infrastructure Helpers
 # =====================================================================
-
 def log_webhook_payload(platform: str, payload: dict) -> None:
-    """
-    Logs raw incoming webhook payload to terminal.
-    """
     timestamp = datetime.now(timezone.utc).isoformat()
     separator = "=" * 60
     print(separator)
@@ -38,52 +224,96 @@ def log_webhook_payload(platform: str, payload: dict) -> None:
 
 
 def save_normalized_event(event: NormalizedEvent) -> None:
-    """
-    Saves a normalized event to events.json file.
-    This is temporary storage until Neo4j database is connected.
-    Member 2 will replace this with a real database call later.
-
-    Every event gets appended to the list in events.json.
-    If the file doesn't exist yet, it creates it automatically.
-    """
     filepath = "events.json"
-
-    # Load existing events if file exists
     if os.path.exists(filepath):
         with open(filepath, "r") as f:
             events = json.load(f)
     else:
         events = []
-
-    # Append new event
     events.append(event.model_dump())
-
-    # Save back to file
     with open(filepath, "w") as f:
         json.dump(events, f, indent=2)
-
-    print(f"[SAVED] Normalized event saved to {filepath} (total: {len(events)})")
+    print(f"[SAVED] Normalized event saved (total: {len(events)})")
     sys.stdout.flush()
 
 
 def process_and_save(platform: str, event_type: str, payload: dict) -> NormalizedEvent:
-    """
-    Central processing pipeline.
-    Every webhook route calls this after logging the raw payload.
-
-    1. Passes raw payload to Member 4's normalizer
-    2. Prints the clean normalized result
-    3. Saves it to events.json
-    4. Returns the normalized event
-    """
     normalized = normalize_event(event_type, payload)
-
     print(f"[NORMALIZED] {normalized.action_summary}")
     sys.stdout.flush()
-
     save_normalized_event(normalized)
-
     return normalized
+
+
+# =====================================================================
+# STATE MACHINE HELPERS
+# =====================================================================
+
+def extract_task_references(commit_message: str) -> list:
+    """
+    Scans a commit message for task references.
+
+    Recognized patterns:
+    - "Fixes Task #8"       → task_008
+    - "Closes #3"           → task_003
+    - "Resolves task_005"   → task_005
+    - "fixes task 12"       → task_012
+
+    Returns a list of task IDs found in the message.
+    """
+    patterns = [
+        r'(?:fixes|closes|resolves)\s+task[_\s#]+(\d+)',
+        r'(?:fixes|closes|resolves)\s+#(\d+)',
+        r'task[_\s#]+(\d+)',
+    ]
+    found = []
+    message_lower = commit_message.lower()
+    for pattern in patterns:
+        matches = re.findall(pattern, message_lower)
+        found.extend(matches)
+    return list(set(found))
+
+
+def update_task_status(task_ref: str, new_status: str) -> bool:
+    """
+    Finds a task by its reference number and updates its status.
+
+    task_ref is just the number — "8" finds "task_008"
+    new_status is "completed", "in_progress", or "todo"
+
+    Returns True if task was found and updated.
+    Returns False if task was not found.
+    """
+    filepath = "tasks.json"
+
+    if not os.path.exists(filepath):
+        print(f"[STATE MACHINE] tasks.json not found — cannot update task")
+        sys.stdout.flush()
+        return False
+
+    with open(filepath, "r") as f:
+        data = json.load(f)
+
+    # Build the full task ID from the number
+    # "8" becomes "task_008"
+    full_task_id = f"task_{task_ref.zfill(3)}"
+
+    for task in data.get("tasks", []):
+        if task["id"] == full_task_id:
+            old_status = task["status"]
+            task["status"] = new_status
+            task["updated_at"] = datetime.now(timezone.utc).isoformat()
+
+            with open(filepath, "w") as f:
+                json.dump(data, f, indent=2)
+
+            print(f"[STATE MACHINE] ✅ {full_task_id}: {old_status} → {new_status}")
+            sys.stdout.flush()
+            return True
+
+    print(f"[STATE MACHINE] ❌ Task {full_task_id} not found in tasks.json")
+    sys.stdout.flush()
+    return False
 
 
 # =====================================================================
@@ -108,7 +338,7 @@ async def receive_webhook(request: Request):
 
 
 # =====================================================================
-# Route 3 — Webhook Simulator (for internal testing)
+# Route 3 — Webhook Simulator
 # =====================================================================
 @app.post("/test/simulate-webhook")
 async def simulate_webhook(request: Request):
@@ -122,36 +352,62 @@ async def simulate_webhook(request: Request):
 
 
 # =====================================================================
-# Route 4 — GitHub Webhook Receiver
+# Route 4 — GitHub Webhook Receiver + State Machine
 # =====================================================================
-# Detects event type from the X-GitHub-Event header GitHub sends.
-# Routes it to the correct normalizer automatically.
-#
-# GitHub event types we handle:
-# "push"         — someone pushed code to a branch
-# "pull_request" — PR opened, closed, merged
-# "issues"       — issue opened, closed, commented
-# "release"      — a new release was published
-# "ping"         — GitHub's verification ping when webhook is registered
+# When GitHub sends a push event, this route:
+# 1. Logs the raw payload
+# 2. Reads every commit message
+# 3. Looks for task references like "Fixes Task #8"
+# 4. Automatically updates matching tasks to "completed"
+# 5. Normalizes and saves the event
 # =====================================================================
 @app.post("/webhook/github")
 async def receive_github(request: Request):
     payload = await request.json()
-
-    # GitHub tells us the event type in a header called X-GitHub-Event
-    # e.g. "push", "pull_request", "issues", "ping"
     github_event = request.headers.get("X-GitHub-Event", "unknown")
-
     log_webhook_payload("GITHUB", payload)
 
-    # GitHub sends a "ping" the first time a webhook is registered
-    # Just acknowledge it — no normalization needed
+    # GitHub verification ping
     if github_event == "ping":
-        print("[GITHUB] Ping received — webhook registered successfully!")
+        print("[GITHUB] ✅ Ping received — webhook registered successfully!")
         sys.stdout.flush()
         return {"received": True, "message": "Ping acknowledged"}
 
-    # For all real events, normalize and save
+    # ── STATE MACHINE ──────────────────────────────────────────────
+    # Runs on every push event
+    # Scans all commit messages for task references
+    # Updates matching tasks automatically
+    # ───────────────────────────────────────────────────────────────
+    updated_tasks = []
+
+    if github_event == "push":
+        commits = payload.get("commits", [])
+        pusher = payload.get("pusher", {}).get("name", "unknown")
+        branch = payload.get("ref", "").replace("refs/heads/", "")
+
+        print(f"[STATE MACHINE] Push by {pusher} on branch {branch}")
+        print(f"[STATE MACHINE] Scanning {len(commits)} commit(s) for task references...")
+        sys.stdout.flush()
+
+        for commit in commits:
+            message = commit.get("message", "")
+            print(f"[STATE MACHINE] Commit message: '{message}'")
+            sys.stdout.flush()
+
+            task_refs = extract_task_references(message)
+
+            if task_refs:
+                print(f"[STATE MACHINE] Found task references: {task_refs}")
+                sys.stdout.flush()
+
+                for task_ref in task_refs:
+                    success = update_task_status(task_ref, "completed")
+                    if success:
+                        updated_tasks.append(f"task_{task_ref.zfill(3)}")
+            else:
+                print(f"[STATE MACHINE] No task references found in this commit")
+                sys.stdout.flush()
+
     normalized = process_and_save("github", github_event, payload)
 
     return {
@@ -159,6 +415,7 @@ async def receive_github(request: Request):
         "platform": "github",
         "event_type": github_event,
         "normalized_summary": normalized.action_summary,
+        "tasks_auto_updated": updated_tasks,
         "timestamp": datetime.now(timezone.utc).isoformat()
     }
 
@@ -166,23 +423,15 @@ async def receive_github(request: Request):
 # =====================================================================
 # Route 5 — Discord Webhook Receiver
 # =====================================================================
-# Handles Discord verification ping on first registration.
-# All real Discord messages get normalized and saved.
-# =====================================================================
 @app.post("/webhook/discord")
 async def receive_discord(request: Request):
     payload = await request.json()
     log_webhook_payload("DISCORD", payload)
-
-    # Discord verification handshake
     if payload.get("type") == 1:
-        print("[DISCORD] Verification ping received — responding with handshake.")
+        print("[DISCORD] Verification ping — responding with handshake.")
         sys.stdout.flush()
         return {"type": 1}
-
-    # Normalize and save real Discord messages
     normalized = process_and_save("discord", "discord_message", payload)
-
     return {
         "received": True,
         "platform": "discord",
@@ -194,16 +443,11 @@ async def receive_discord(request: Request):
 # =====================================================================
 # Route 6 — Figma Webhook Receiver
 # =====================================================================
-# All Figma events get normalized and saved.
-# =====================================================================
 @app.post("/webhook/figma")
 async def receive_figma(request: Request):
     payload = await request.json()
     log_webhook_payload("FIGMA", payload)
-
-    # Normalize and save Figma events
     normalized = process_and_save("figma", "figma", payload)
-
     return {
         "received": True,
         "platform": "figma",
@@ -213,7 +457,11 @@ async def receive_figma(request: Request):
 
 
 # =====================================================================
-# Route 7 — Mock Tasks Endpoint (for Prince, Frontend Developer)
+# Route 7 — Mock Tasks Endpoint
+# =====================================================================
+# Returns tasks from tasks.json instead of hardcoded list now.
+# This means when State Machine updates a task, Prince's UI
+# will see the updated status immediately.
 # =====================================================================
 @app.get("/tasks")
 async def get_tasks():
@@ -244,20 +492,16 @@ async def get_tasks():
 # =====================================================================
 # Route 8 — View Saved Normalized Events
 # =====================================================================
-# GET /events
-# Returns everything saved in events.json so far.
-# Useful for Member 2 (Graph Engineer) to see what normalized
-# events look like before connecting the real database.
-# Also useful for debugging — see exactly what got normalized.
-# =====================================================================
 @app.get("/events")
 async def get_events():
     filepath = "events.json"
     if not os.path.exists(filepath):
-        events_data = {"total": 0, "events": []}
-    else:
-        with open(filepath, "r") as f:
-            events_data = {"total": len(json.load(f)), "events": json.load(open(filepath))}
+        return {"total": 0, "events": []}
 
-    formatted_json = json.dumps(events_data, indent=4)
-    return Response(content=formatted_json, media_type="application/json")
+    with open(filepath, "r") as f:
+        events = json.load(f)
+
+    return {
+        "total": len(events),
+        "events": events
+    }
