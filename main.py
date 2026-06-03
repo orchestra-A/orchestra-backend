@@ -3,6 +3,10 @@ import json
 import sys
 import os
 from fastapi import FastAPI, Request
+from fastapi.websockets import WebSocket, WebSocketDisconnect
+from typing import List
+import asyncio
+import re
 
 # Import Member 4's normalizer and models
 from normalizer import normalize_event
@@ -24,6 +28,65 @@ app = FastAPI(
 GITHUB_CLIENT_ID = os.getenv("GITHUB_CLIENT_ID")
 GITHUB_CLIENT_SECRET = os.getenv("GITHUB_CLIENT_SECRET")
 
+# =====================================================================
+# WEBSOCKET CONNECTION MANAGER
+# =====================================================================
+# This is the broadcast system.
+#
+# Imagine a WhatsApp group called "Task Updates".
+# Every browser tab that opens Timeline Orchestra joins this group.
+# When a task changes status, your server sends a message to the group.
+# Every browser in the group receives it instantly.
+#
+# active_connections = the list of all browsers currently open
+# connect()         = adds a browser to the group when it opens
+# disconnect()      = removes a browser when it closes the tab
+# broadcast()       = sends a message to every browser in the group
+# =====================================================================
+class ConnectionManager:
+    def __init__(self):
+        # List of all currently connected browsers
+        self.active_connections: List[WebSocket] = []
+
+    async def connect(self, websocket: WebSocket):
+        # Accept the connection request from browser
+        # Add it to our active list
+        await websocket.accept()
+        self.active_connections.append(websocket)
+        print(f"[WEBSOCKET] ✅ New browser connected. Total connected: {len(self.active_connections)}")
+        sys.stdout.flush()
+
+    def disconnect(self, websocket: WebSocket):
+        # Browser closed the tab — remove from list
+        if websocket in self.active_connections:
+            self.active_connections.remove(websocket)
+        print(f"[WEBSOCKET] ❌ Browser disconnected. Total connected: {len(self.active_connections)}")
+        sys.stdout.flush()
+
+    async def broadcast(self, message: dict):
+        # Send message to every connected browser simultaneously
+        # If any connection is broken, remove it silently
+        disconnected = []
+
+        for connection in self.active_connections:
+            try:
+                await connection.send_json(message)
+            except Exception:
+                # Connection broke — mark for removal
+                disconnected.append(connection)
+
+        # Clean up broken connections
+        for connection in disconnected:
+            self.active_connections.remove(connection)
+
+        print(f"[WEBSOCKET] 📡 Broadcast sent to {len(self.active_connections)} browser(s)")
+        print(f"[WEBSOCKET] Message: {message}")
+        sys.stdout.flush()
+
+
+# Create one single manager that lives as long as the server runs
+# Every route uses this same manager
+manager = ConnectionManager()
 
 # =====================================================================
 # STARTUP — Initialize tasks.json
@@ -309,6 +372,27 @@ def update_task_status(task_ref: str, new_status: str) -> bool:
 
             print(f"[STATE MACHINE] ✅ {full_task_id}: {old_status} → {new_status}")
             sys.stdout.flush()
+
+            # ── WEBSOCKET BROADCAST ────────────────────────────────
+            # The moment a task status changes, tell every connected
+            # browser about it immediately.
+            # Member 5's frontend listens for this and changes the
+            # task node color on screen without any page refresh.
+            # ──────────────────────────────────────────────────────
+            try:
+                asyncio.create_task(manager.broadcast({
+                    "type": "task_updated",
+                    "task_id": full_task_id,
+                    "old_status": old_status,
+                    "new_status": new_status,
+                    "timestamp": datetime.now(timezone.utc).isoformat()
+                }))
+                print(f"[WEBSOCKET] 📡 Broadcast triggered for {full_task_id}")
+                sys.stdout.flush()
+            except Exception as e:
+                print(f"[WEBSOCKET] ⚠️ Broadcast failed: {e}")
+                sys.stdout.flush()
+
             return True
 
     print(f"[STATE MACHINE] ❌ Task {full_task_id} not found in tasks.json")
@@ -505,3 +589,60 @@ async def get_events():
         "total": len(events),
         "events": events
     }
+# =====================================================================
+# Route 9 — WebSocket Live Connection
+# =====================================================================
+# This is the permanent open phone line browsers connect to.
+#
+# HOW IT WORKS:
+# 1. Member 5's frontend connects to this URL once when page loads
+# 2. Connection stays open as long as the browser tab is open
+# 3. When any task updates, manager.broadcast() fires automatically
+# 4. This route pushes the update to Member 5's browser instantly
+# 5. Member 5's code uses task_id to find the node and change color
+#
+# WHAT MEMBER 5 RECEIVES (automatically, no request needed):
+# {
+#   "type": "task_updated",
+#   "task_id": "task_008",
+#   "old_status": "in_progress",
+#   "new_status": "completed",
+#   "timestamp": "2025-06-03T10:00:00Z"
+# }
+#
+# URL TO GIVE MEMBER 5:
+# wss://web-production-30f40.up.railway.app/ws
+#
+# NOTE: wss:// is the secure version of ws:// — same as https vs http
+# =====================================================================
+@app.websocket("/ws")
+async def websocket_endpoint(websocket: WebSocket):
+    # Add this browser to the connected list
+    await manager.connect(websocket)
+
+    # Send a welcome message so Member 5 knows connection succeeded
+    await websocket.send_json({
+        "type": "connection_established",
+        "message": "Connected to Timeline Orchestra live updates",
+        "timestamp": datetime.now(timezone.utc).isoformat()
+    })
+
+    try:
+        # Keep the connection alive forever
+        # Wait for any message from the browser
+        # Browser can send "ping" to check if connection is still alive
+        while True:
+            data = await websocket.receive_text()
+
+            if data == "ping":
+                # Browser is checking if we're still here — respond
+                await websocket.send_json({
+                    "type": "pong",
+                    "timestamp": datetime.now(timezone.utc).isoformat()
+                })
+                print(f"[WEBSOCKET] Ping received — pong sent")
+                sys.stdout.flush()
+
+    except WebSocketDisconnect:
+        # Browser closed the tab — remove from list
+        manager.disconnect(websocket)
