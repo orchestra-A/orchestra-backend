@@ -217,169 +217,28 @@ async def receive_figma(request: Request):
 # =====================================================================
 @app.get("/tasks")
 async def get_tasks():
-    tasks = [
-        {
-            "id": "task_001",
-            "order": 1,
-            "project_id": "proj_orchestra",
-            "title": "Set up Neo4j database schema",
-            "description": "Define node types and relationship models for the knowledge graph.",
-            "status": "completed",
-            "assigned_to": "Member 2 — Knowledge Graph Engineer",
-            "platform": "github",
-            "priority": "high",
-            "created_at": "2025-05-28T09:00:00Z",
-            "updated_at": "2025-05-30T14:30:00Z"
-        },
-        {
-            "id": "task_002",
-            "order": 2,
-            "project_id": "proj_orchestra",
-            "title": "Build semantic data normalizer",
-            "description": "Scrub incoming platform events into clean uniform data blocks.",
-            "status": "in_progress",
-            "assigned_to": "Member 4 — Data Pipeline Engineer",
-            "platform": "github",
-            "priority": "high",
-            "created_at": "2025-05-28T09:00:00Z",
-            "updated_at": "2025-06-01T10:00:00Z"
-        },
-        {
-            "id": "task_003",
-            "order": 3,
-            "project_id": "proj_orchestra",
-            "title": "Connect reactflow canvas to backend",
-            "description": "Replace static mock files with live database endpoints.",
-            "status": "in_progress",
-            "assigned_to": "Member 5 — Interactive Canvas Specialist",
-            "platform": "figma",
-            "priority": "medium",
-            "created_at": "2025-05-29T11:00:00Z",
-            "updated_at": "2025-05-31T16:00:00Z"
-        },
-        {
-            "id": "task_004",
-            "order": 4,
-            "project_id": "proj_orchestra",
-            "title": "Implement Connect Workspaces UI",
-            "description": "Build authentication screens for team tool integrations.",
-            "status": "in_progress",
-            "assigned_to": "Member 6 — Interface Developer",
-            "platform": "figma",
-            "priority": "medium",
-            "created_at": "2025-05-29T11:00:00Z",
-            "updated_at": "2025-06-01T09:00:00Z"
-        },
-        {
-            "id": "task_005",
-            "order": 5,
-            "project_id": "proj_orchestra",
-            "title": "Configure Discord webhook listener",
-            "description": "Expand FastAPI server to natively catch Discord events.",
-            "status": "completed",
-            "assigned_to": "Member 3 — Infrastructure Engineer",
-            "platform": "discord",
-            "priority": "high",
-            "created_at": "2025-06-01T08:00:00Z",
-            "updated_at": "2025-06-01T12:00:00Z"
-        },
-        {
-            "id": "task_006",
-            "order": 6,
-            "project_id": "proj_orchestra",
-            "title": "Configure Figma webhook listener",
-            "description": "Expand FastAPI server to natively catch Figma design events.",
-            "status": "completed",
-            "assigned_to": "Member 3 — Infrastructure Engineer",
-            "platform": "figma",
-            "priority": "high",
-            "created_at": "2025-06-01T08:00:00Z",
-            "updated_at": "2025-06-01T12:00:00Z"
-        },
-        {
-            "id": "task_007",
-            "order": 7,
-            "project_id": "proj_orchestra",
-            "title": "LLM JSON extraction prompting",
-            "description": "Force LLM to respond only in structured valid JSON.",
-            "status": "completed",
-            "assigned_to": "Member 1 — Agent Architect",
-            "platform": "github",
-            "priority": "high",
-            "created_at": "2025-05-28T09:00:00Z",
-            "updated_at": "2025-05-30T11:00:00Z"
-        },
-        {
-            "id": "task_008",
-            "order": 8,
-            "project_id": "proj_orchestra",
-            "title": "GitHub State Machine setup",
-            "description": "Auto-update task status when matching pull requests are submitted.",
-            "status": "todo",
-            "assigned_to": "Member 3 — Infrastructure Engineer",
-            "platform": "github",
-            "priority": "high",
-            "created_at": "2025-06-01T08:00:00Z",
-            "updated_at": "2025-06-01T08:00:00Z"
-        },
-        {
-            "id": "task_009",
-            "order": 1,
-            "project_id": "proj_marketing",
-            "title": "Design new landing page",
-            "description": "Create wireframes and mockups for the marketing site.",
-            "status": "completed",
-            "assigned_to": "Member 6 — Interface Developer",
-            "platform": "figma",
-            "priority": "high",
-            "created_at": "2025-06-02T08:00:00Z",
-            "updated_at": "2025-06-02T12:00:00Z"
-        },
-        {
-            "id": "task_010",
-            "order": 2,
-            "project_id": "proj_marketing",
-            "title": "Write copy for landing page",
-            "description": "Draft marketing copy and value propositions.",
-            "status": "todo",
-            "assigned_to": "Member 1 — Agent Architect",
-            "platform": "discord",
-            "priority": "medium",
-            "created_at": "2025-06-02T09:00:00Z",
-            "updated_at": "2025-06-02T09:00:00Z"
-        },
-        {
-            "id": "task_011",
-            "order": 1,
-            "project_id": "proj_mobile_app",
-            "title": "Setup React Native CLI",
-            "description": "Initialize the bare React Native project.",
-            "status": "todo",
-            "assigned_to": "Member 5 — Interactive Canvas Specialist",
-            "platform": "github",
-            "priority": "high",
-            "created_at": "2025-06-03T10:00:00Z",
-            "updated_at": "2025-06-03T10:00:00Z"
-        },
-        {
-            "id": "task_012",
-            "order": 1,
-            "project_id": "proj_analytics",
-            "title": "Define tracking plan",
-            "description": "Map out all funnel events for mixpanel.",
-            "status": "in_progress",
-            "assigned_to": "Member 4 — Data Pipeline Engineer",
-            "platform": "figma",
-            "priority": "medium",
-            "created_at": "2025-06-04T11:00:00Z",
-            "updated_at": "2025-06-04T11:00:00Z"
+    import urllib.request
+    import json
+    from fastapi import Response
+    url = "https://orchestra-ai-production.up.railway.app/tasks"
+    try:
+        req = urllib.request.Request(url)
+        with urllib.request.urlopen(req, timeout=10) as response:
+            data = json.loads(response.read().decode())
+        result = {
+            "total": len(data),
+            "tasks": data
         }
-    ]
-
-    return {
-        "total": len(tasks),
-        "tasks": tasks
-    }
+    except Exception as e:
+        print(f"[ERROR] Failed to fetch tasks from Graph DB: {e}")
+        result = {
+            "total": 0,
+            "tasks": [],
+            "error": str(e)
+        }
+    
+    formatted_json = json.dumps(result, indent=4)
+    return Response(content=formatted_json, media_type="application/json")
 
 
 # =====================================================================
