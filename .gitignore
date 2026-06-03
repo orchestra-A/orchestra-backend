@@ -15,8 +15,7 @@ test_live_webhooks.py
 # Old directories / Instructions
 week1-webhook/
 week2_files/
+week3_files/
 # -----------------
 events.json
 tasks.json
-venv/
-__pycache__/

@@ -465,12 +465,28 @@ async def receive_figma(request: Request):
 # =====================================================================
 @app.get("/tasks")
 async def get_tasks():
-    filepath = "tasks.json"
-    if not os.path.exists(filepath):
-        initialize_tasks_file()
-    with open(filepath, "r") as f:
-        data = json.load(f)
-    return data
+    import urllib.request
+    import json
+    from fastapi import Response
+    url = "https://orchestra-ai-production.up.railway.app/tasks"
+    try:
+        req = urllib.request.Request(url)
+        with urllib.request.urlopen(req, timeout=10) as response:
+            data = json.loads(response.read().decode())
+        result = {
+            "total": len(data),
+            "tasks": data
+        }
+    except Exception as e:
+        print(f"[ERROR] Failed to fetch tasks from Graph DB: {e}")
+        result = {
+            "total": 0,
+            "tasks": [],
+            "error": str(e)
+        }
+    
+    formatted_json = json.dumps(result, indent=4)
+    return Response(content=formatted_json, media_type="application/json")
 
 
 # =====================================================================
