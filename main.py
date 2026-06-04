@@ -541,16 +541,29 @@ async def receive_figma(request: Request):
 
 
 # =====================================================================
-# Route 7 — Mock Tasks Endpoint
+# Route 7 — Local Tasks Endpoint
 # =====================================================================
-# Returns tasks from tasks.json instead of hardcoded list now.
-# This means when State Machine updates a task, Prince's UI
-# will see the updated status immediately.
+# Returns tasks from local tasks.json.
+# This ensures Member 3's UI sees the latest State Machine updates.
 # =====================================================================
 @app.get("/tasks")
 async def get_tasks():
+    from fastapi import Response
+    filepath = "tasks.json"
+    if not os.path.exists(filepath):
+        initialize_tasks_file()
+    with open(filepath, "r") as f:
+        data = json.load(f)
+    
+    formatted_json = json.dumps(data, indent=4)
+    return Response(content=formatted_json, media_type="application/json")
+
+# =====================================================================
+# Route 7.1 — Live Tasks Endpoint (Member 2's API)
+# =====================================================================
+@app.get("/tasks/live")
+async def get_tasks_live():
     import urllib.request
-    import json
     from fastapi import Response
     url = "https://orchestra-ai-production.up.railway.app/tasks"
     try:
@@ -571,6 +584,78 @@ async def get_tasks():
     
     formatted_json = json.dumps(result, indent=4)
     return Response(content=formatted_json, media_type="application/json")
+
+# =====================================================================
+# Route 7.2 — Task CRUD Endpoints (Week 3 Day 2)
+# =====================================================================
+@app.get("/tasks/{task_id}")
+async def get_single_task(task_id: str):
+    filepath = "tasks.json"
+    if not os.path.exists(filepath):
+        return {"error": "tasks.json not found"}
+    with open(filepath, "r") as f:
+        data = json.load(f)
+    for task in data.get("tasks", []):
+        if task["id"] == task_id:
+            return task
+    return {"error": "Task not found"}
+
+@app.post("/tasks")
+async def create_new_task(request: Request):
+    body = await request.json()
+    task_id = body.get("id")
+    title = body.get("title", "Untitled")
+    if not task_id:
+        return {"error": "'id' field required"}
+        
+    filepath = "tasks.json"
+    if not os.path.exists(filepath):
+        initialize_tasks_file()
+    with open(filepath, "r") as f:
+        data = json.load(f)
+        
+    new_task = {
+        "id": task_id,
+        "title": title,
+        "status": "todo",
+        "created_at": datetime.now(timezone.utc).isoformat(),
+        "updated_at": datetime.now(timezone.utc).isoformat()
+    }
+    data["tasks"].append(new_task)
+    data["total"] = len(data["tasks"])
+    
+    with open(filepath, "w") as f:
+        json.dump(data, f, indent=2)
+        
+    # Broadcast new task creation
+    try:
+        asyncio.create_task(manager.broadcast({
+            "type": "task_created",
+            "task": new_task,
+            "timestamp": datetime.now(timezone.utc).isoformat()
+        }))
+    except Exception:
+        pass
+        
+    return new_task
+
+@app.patch("/tasks/{task_id}/state")
+async def manually_update_task_state(task_id: str, request: Request):
+    body = await request.json()
+    new_state = body.get("state")
+    if not new_state:
+        return {"error": "'state' field required"}
+        
+    # Extract just the number for the update function (e.g. "task_001" -> "1")
+    task_ref = task_id.replace("task_", "").lstrip("0")
+    if not task_ref:
+        task_ref = "0"
+        
+    success = update_task_status(task_ref, new_state)
+    if success:
+        return {"status": "success", "message": f"Updated {task_id} to {new_state}"}
+    return {"error": "Task not found"}
+
 
 
 # =====================================================================
