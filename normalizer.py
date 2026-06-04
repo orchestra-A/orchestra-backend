@@ -131,12 +131,15 @@ def _normalize_discord_message(body: dict) -> NormalizedEvent:
     This normalizer handles both raw Discord API shape and any
     wrapper format M3 might add.
     """
-    # Handle both raw Discord API shape and simple wrapper
-    author = (
-        body.get("author", {}).get("username")
-        or body.get("username")
-        or "unknown"
-    )
+    # Handle both cases:
+    # Case 1 — author is a dict: {"username": "mohit"} (raw Discord API format)
+    # Case 2 — author is a plain string: "Mohit"  
+    author_field = body.get("author", "unknown")
+    if isinstance(author_field, dict):
+        author = author_field.get("username", "unknown")
+    else:
+        author = str(author_field) if author_field else "unknown"
+    
     content = body.get("content", "")
     channel_id = str(body.get("channel_id", body.get("channel", "unknown")))
     timestamp = body.get("timestamp") or datetime.now(timezone.utc).isoformat()

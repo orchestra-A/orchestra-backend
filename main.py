@@ -663,6 +663,7 @@ async def manually_update_task_state(task_id: str, request: Request):
 # =====================================================================
 @app.get("/events")
 async def get_events():
+    from fastapi.responses import Response
     filepath = "events.json"
     if not os.path.exists(filepath):
         return {"total": 0, "events": []}
@@ -670,10 +671,13 @@ async def get_events():
     with open(filepath, "r") as f:
         events = json.load(f)
 
-    return {
+    result = {
         "total": len(events),
         "events": events
     }
+
+    formatted = json.dumps(result, indent=4)
+    return Response(content=formatted, media_type="application/json")
 # =====================================================================
 # Route 9 — WebSocket Live Connection
 # =====================================================================
