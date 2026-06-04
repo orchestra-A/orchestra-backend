@@ -11,7 +11,8 @@ Responsible for core server hosting, API endpoint routing, and receiving incomin
 - Exposes a FastAPI application to the web using `ngrok`.
 - Catches live webhook events via dedicated endpoints (`/webhook/github`, `/webhook/discord`, `/webhook/figma`).
 - Validates payload security (e.g., verifying `X-Hub-Signature-256` HMAC hashes for GitHub).
-- Serves static task mock data for the frontend team at `/tasks`.
+- Serves task mock data and REST endpoints (`/tasks`, `/tasks/{id}`) for the frontend team.
+- Hosts a live WebSocket server at `/ws` for real-time state machine updates.
 
 ### 2. Data Pipeline Layer
 Responsible for transforming raw, multi-platform events into a clean, uniform format.
@@ -55,11 +56,17 @@ ngrok http 8000
   ```bash
   curl -X POST http://localhost:8000/webhook/github -H "X-GitHub-Event: push" -d "{}"
   ```
+- **Test Task Endpoints:**
+  ```bash
+  curl -X GET http://localhost:8000/tasks
+  curl -X GET http://localhost:8000/tasks/live
+  ```
 - **View Normalized Events:** Open `http://localhost:8000/events` in your browser.
 
 ---
 
 ## Current Status
 
-- **Week 1:** Complete (Infrastructure boilerplate).
-- **Week 2:** In progress.
+- **Week 1:** Complete (Infrastructure boilerplate & Webhooks).
+- **Week 2:** Complete (Data Pipeline Normalizer).
+- **Week 3:** In Progress (Task REST Endpoints & WebSocket Integration).
