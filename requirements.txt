@@ -11,6 +11,7 @@ httpx==0.28.1
 idna==3.16
 pydantic==2.13.4
 pydantic_core==2.46.4
+PyJWT==2.13.0
 python-dotenv==1.2.1
 starlette==0.49.3
 typing-inspection==0.4.2
