@@ -7,6 +7,8 @@ from fastapi.websockets import WebSocket, WebSocketDisconnect
 from typing import List
 import asyncio
 import re
+import hmac
+import hashlib
 
 # Import Member 4's normalizer and models
 from normalizer import normalize_event
@@ -27,6 +29,7 @@ app = FastAPI(
 # =====================================================================
 GITHUB_CLIENT_ID = os.getenv("GITHUB_CLIENT_ID")
 GITHUB_CLIENT_SECRET = os.getenv("GITHUB_CLIENT_SECRET")
+GITHUB_WEBHOOK_SECRET_KEY = os.getenv("GITHUB_WEBHOOK_SECRET_KEY", "default_secret")
 
 # =====================================================================
 # WEBSOCKET CONNECTION MANAGER
@@ -95,6 +98,154 @@ manager = ConnectionManager()
 # create it from our hardcoded task list.
 # This gives the State Machine something to read and update.
 # =====================================================================
+# =====================================================================
+# GITHUB WEBHOOK AUTO-REGISTRATION HELPERS
+# =====================================================================
+
+def generate_user_webhook_secret(github_username: str) -> str:
+    """
+    Generates a unique webhook secret for each user.
+
+    Why unique per user?
+    When 100 different teams connect their GitHub repos,
+    each team's events need to be verified separately.
+    If everyone shared one secret and it leaked, all teams
+    would be compromised. Unique secrets isolate the damage.
+
+    How it works:
+    Combines your master secret key with the username
+    and creates a unique hash. Same username always
+    produces the same secret — so you can verify later.
+    """
+    combined = f"{GITHUB_WEBHOOK_SECRET_KEY}:{github_username}"
+    return hmac.new(
+        GITHUB_WEBHOOK_SECRET_KEY.encode(),
+        combined.encode(),
+        hashlib.sha256
+    ).hexdigest()[:32]
+
+
+async def register_github_webhook(
+    access_token: str,
+    github_username: str,
+    repo_full_name: str
+) -> dict:
+    """
+    Automatically registers a webhook on the user's GitHub repo.
+
+    This is called after OAuth login completes.
+    The user never has to manually go to GitHub settings.
+    Orchestra does it for them automatically.
+
+    access_token   = the token GitHub gave us after OAuth
+    github_username = their GitHub username
+    repo_full_name  = "username/repo-name" format
+    """
+    import httpx
+
+    # Generate a unique secret for this user
+    webhook_secret = generate_user_webhook_secret(github_username)
+
+    # This is the URL GitHub will send events to
+    # Every user's events come to the same endpoint
+    # We identify whose event it is from the payload
+    webhook_url = "https://orchestra-backend-2v5a.onrender.com/webhook/github"
+
+    # The webhook configuration we send to GitHub
+    webhook_config = {
+        "name": "web",
+        "active": True,
+        "events": [
+            "push",           # Someone pushed code
+            "pull_request",   # PR opened, closed, merged
+            "issues"          # Issue created, closed, commented
+        ],
+        "config": {
+            "url": webhook_url,
+            "content_type": "json",
+            "secret": webhook_secret,
+            "insecure_ssl": "0"
+        }
+    }
+
+    # Call GitHub API to create the webhook
+    async with httpx.AsyncClient() as client:
+        response = await client.post(
+            f"https://api.github.com/repos/{repo_full_name}/hooks",
+            json=webhook_config,
+            headers={
+                "Authorization": f"Bearer {access_token}",
+                "Accept": "application/vnd.github+json",
+                "X-GitHub-Api-Version": "2022-11-28"
+            }
+        )
+
+    if response.status_code == 201:
+        print(f"[GITHUB] ✅ Webhook registered for {repo_full_name}")
+        sys.stdout.flush()
+        return {
+            "success": True,
+            "repo": repo_full_name,
+            "webhook_id": response.json().get("id"),
+            "events": ["push", "pull_request", "issues"]
+        }
+    elif response.status_code == 422:
+        # 422 means webhook already exists on this repo
+        print(f"[GITHUB] ℹ️ Webhook already exists for {repo_full_name}")
+        sys.stdout.flush()
+        return {
+            "success": True,
+            "repo": repo_full_name,
+            "note": "Webhook already registered"
+        }
+    else:
+        print(f"[GITHUB] ❌ Failed to register webhook: {response.status_code}")
+        print(f"[GITHUB] Response: {response.text}")
+        sys.stdout.flush()
+        return {
+            "success": False,
+            "repo": repo_full_name,
+            "error": response.text,
+            "status_code": response.status_code
+        }
+
+
+def save_connected_user(
+    github_username: str,
+    access_token: str,
+    repo_full_name: str,
+    webhook_result: dict
+) -> None:
+    """
+    Saves the connected user's information to connected_users.json.
+
+    This is your record of which users have connected their GitHub.
+    Later this will be stored in a proper database.
+    For now a JSON file works fine for development.
+    """
+    filepath = "connected_users.json"
+
+    if os.path.exists(filepath):
+        with open(filepath, "r") as f:
+            users = json.load(f)
+    else:
+        users = {}
+
+    users[github_username] = {
+        "github_username": github_username,
+        "repo": repo_full_name,
+        "connected_at": datetime.now(timezone.utc).isoformat(),
+        "webhook_registered": webhook_result.get("success", False),
+        "webhook_id": webhook_result.get("webhook_id"),
+        "access_token": access_token  # In production this would be encrypted
+    }
+
+    with open(filepath, "w") as f:
+        json.dump(users, f, indent=2)
+
+    print(f"[USER] ✅ Saved connected user: {github_username}")
+    sys.stdout.flush()
+
 def initialize_tasks_file():
     if not os.path.exists("tasks.json"):
         tasks_data = {
@@ -447,21 +598,68 @@ async def simulate_webhook(request: Request):
 # =====================================================================
 @app.post("/webhook/github")
 async def receive_github(request: Request):
-    payload = await request.json()
+
+    # ── SIGNATURE VERIFICATION ─────────────────────────────────
+    # Read raw bytes first — needed for signature check
+    # We must read raw_body BEFORE parsing as JSON
+    raw_body = await request.body()
+
+    # Get the signature GitHub sent in the header
+    github_signature = request.headers.get("X-Hub-Signature-256", "")
+
+    # Parse payload
+    try:
+        payload = json.loads(raw_body)
+    except Exception:
+        return {"error": "Invalid JSON payload"}
+
+    # Find out who sent this event
+    sender = (
+        payload.get("sender", {}).get("login")
+        or payload.get("pusher", {}).get("name")
+        or "unknown"
+    )
+
+    # Look up this user's unique webhook secret
+    connected_users_file = "connected_users.json"
+    user_secret = None
+
+    if os.path.exists(connected_users_file):
+        with open(connected_users_file, "r") as f:
+            users = json.load(f)
+        if sender in users:
+            user_secret = generate_user_webhook_secret(sender)
+
+    # Verify signature if we have a secret for this user
+    if github_signature and user_secret:
+        expected_signature = "sha256=" + hmac.new(
+            user_secret.encode(),
+            raw_body,
+            hashlib.sha256
+        ).hexdigest()
+
+        if not hmac.compare_digest(github_signature, expected_signature):
+            print(f"[GITHUB] ❌ Signature verification FAILED for {sender}")
+            sys.stdout.flush()
+            from fastapi.responses import JSONResponse
+            return JSONResponse(
+                status_code=401,
+                content={"error": "Invalid signature"}
+            )
+        print(f"[GITHUB] ✅ Signature verified for {sender}")
+        sys.stdout.flush()
+    # ── END SIGNATURE VERIFICATION ──────────────────────────────
+
     github_event = request.headers.get("X-GitHub-Event", "unknown")
     log_webhook_payload("GITHUB", payload)
 
-    # GitHub verification ping
+    # GitHub ping when webhook is first registered
     if github_event == "ping":
-        print("[GITHUB] ✅ Ping received — webhook registered successfully!")
+        print(f"[GITHUB] ✅ Ping from {sender} — webhook registered!")
         sys.stdout.flush()
         return {"received": True, "message": "Ping acknowledged"}
 
-    # ── STATE MACHINE ──────────────────────────────────────────────
-    # Runs on every push event
-    # Scans all commit messages for task references
-    # Updates matching tasks automatically
-    # ───────────────────────────────────────────────────────────────
+    # ── STATE MACHINE ──────────────────────────────────────────
     updated_tasks = []
 
     if github_event == "push":
@@ -498,11 +696,11 @@ async def receive_github(request: Request):
         "received": True,
         "platform": "github",
         "event_type": github_event,
+        "sender": sender,
         "normalized_summary": normalized.action_summary,
         "tasks_auto_updated": updated_tasks,
         "timestamp": datetime.now(timezone.utc).isoformat()
     }
-
 
 # =====================================================================
 # Route 5 — Discord Webhook Receiver
@@ -735,3 +933,131 @@ async def websocket_endpoint(websocket: WebSocket):
     except WebSocketDisconnect:
         # Browser closed the tab — remove from list
         manager.disconnect(websocket)
+# =====================================================================
+# Route — GitHub OAuth Login
+# =====================================================================
+# User clicks "Connect GitHub" on the frontend.
+# This redirects them to GitHub's authorization page.
+# After approval, GitHub redirects back to /auth/github/callback
+# =====================================================================
+@app.get("/auth/github")
+async def github_login():
+    from fastapi.responses import RedirectResponse
+    github_auth_url = (
+        f"https://github.com/login/oauth/authorize"
+        f"?client_id={GITHUB_CLIENT_ID}"
+        f"&scope=read:user,repo,admin:repo_hook"
+    )
+    return RedirectResponse(github_auth_url)
+
+
+# =====================================================================
+# Route — GitHub OAuth Callback
+# =====================================================================
+# GitHub redirects here after user approves access.
+# We exchange the code for a token, get their profile,
+# then automatically register a webhook on their repo.
+#
+# User passes their repo like this:
+# /auth/github/callback?code=XXX&repo=username/reponame
+# =====================================================================
+@app.get("/auth/github/callback")
+async def github_callback(code: str, repo: str = None):
+    import httpx
+
+    async with httpx.AsyncClient() as client:
+
+        # Step 1 — Exchange code for access token
+        token_response = await client.post(
+            "https://github.com/login/oauth/access_token",
+            json={
+                "client_id": GITHUB_CLIENT_ID,
+                "client_secret": GITHUB_CLIENT_SECRET,
+                "code": code
+            },
+            headers={"Accept": "application/json"}
+        )
+        token_data = token_response.json()
+        access_token = token_data.get("access_token")
+
+        if not access_token:
+            return {
+                "error": "Failed to get access token",
+                "details": token_data
+            }
+
+        # Step 2 — Get user's GitHub profile
+        user_response = await client.get(
+            "https://api.github.com/user",
+            headers={
+                "Authorization": f"Bearer {access_token}",
+                "Accept": "application/json"
+            }
+        )
+        user_data = user_response.json()
+        github_username = user_data.get("login")
+
+    # Step 3 — Auto register webhook on their repo
+    webhook_result = {"success": False, "note": "No repo provided"}
+
+    if repo:
+        print(f"[GITHUB] Registering webhook for {github_username} on {repo}")
+        sys.stdout.flush()
+        webhook_result = await register_github_webhook(
+            access_token=access_token,
+            github_username=github_username,
+            repo_full_name=repo
+        )
+        save_connected_user(
+            github_username=github_username,
+            access_token=access_token,
+            repo_full_name=repo,
+            webhook_result=webhook_result
+        )
+
+    return {
+        "message": "GitHub connected successfully",
+        "user": {
+            "github_username": github_username,
+            "name": user_data.get("name"),
+            "avatar": user_data.get("avatar_url"),
+            "github_url": user_data.get("html_url")
+        },
+        "webhook_registration": webhook_result
+    }
+
+
+# =====================================================================
+# Route — View Connected Users
+# =====================================================================
+# GET /connected-users
+# Shows all users who connected their GitHub to Orchestra.
+# =====================================================================
+@app.get("/connected-users")
+async def get_connected_users():
+    from fastapi.responses import Response
+
+    filepath = "connected_users.json"
+    if not os.path.exists(filepath):
+        return {"total": 0, "users": []}
+
+    with open(filepath, "r") as f:
+        users = json.load(f)
+
+    safe_users = []
+    for username, data in users.items():
+        safe_users.append({
+            "github_username": data.get("github_username"),
+            "repo": data.get("repo"),
+            "connected_at": data.get("connected_at"),
+            "webhook_registered": data.get("webhook_registered"),
+            "webhook_id": data.get("webhook_id")
+        })
+
+    result = {
+        "total": len(safe_users),
+        "connected_users": safe_users
+    }
+
+    formatted = json.dumps(result, indent=4)
+    return Response(content=formatted, media_type="application/json")
