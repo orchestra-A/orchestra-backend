@@ -8,10 +8,12 @@ The backend is composed of two primary tracks working in tandem:
 
 ### 1. Infrastructure Layer
 Responsible for core server hosting, API endpoint routing, and receiving incoming webhook events securely.
-- Exposes a FastAPI application to the web using `ngrok`.
+- Hosted permanently on Render (`https://orchestra-backend-2v5a.onrender.com`).
+- Automatically registers GitHub webhooks for new users using OAuth.
 - Catches live webhook events via dedicated endpoints (`/webhook/github`, `/webhook/discord`, `/webhook/figma`).
 - Validates payload security (e.g., verifying `X-Hub-Signature-256` HMAC hashes for GitHub).
-- Serves static task mock data for the frontend team at `/tasks`.
+- Serves task mock data and REST endpoints (`/tasks`, `/tasks/{id}`) for the frontend team.
+- Hosts a live WebSocket server at `/ws` for real-time state machine updates.
 
 ### 2. Data Pipeline Layer
 Responsible for transforming raw, multi-platform events into a clean, uniform format.
@@ -41,19 +43,22 @@ GITHUB_WEBHOOK_SECRET=your_secret_here
 ```
 
 ### 3. Running the Server
+The production backend is fully managed and deployed automatically via Render. However, to run the server locally for development:
 ```bash
 # Start the FastAPI server locally
 uvicorn main:app --reload --port 8000
-
-# Expose the local server to the internet using ngrok
-ngrok http 8000
 ```
-*(Note: A permanent ngrok URL for live webhooks will be provided later).*
+*(Note: Webhooks will still route to the live Render server unless you manually configure GitHub to point to a local tunnel like ngrok).*
 
 ### 4. Testing Endpoints
 - **Receive Webhook (Local Test):**
   ```bash
   curl -X POST http://localhost:8000/webhook/github -H "X-GitHub-Event: push" -d "{}"
+  ```
+- **Test Task Endpoints:**
+  ```bash
+  curl -X GET http://localhost:8000/tasks
+  curl -X GET http://localhost:8000/tasks/live
   ```
 - **View Normalized Events:** Open `http://localhost:8000/events` in your browser.
 
@@ -61,5 +66,6 @@ ngrok http 8000
 
 ## Current Status
 
-- **Week 1:** Complete (Infrastructure boilerplate).
-- **Week 2:** In progress.
+- **Week 1:** Complete (Infrastructure boilerplate & Webhooks).
+- **Week 2:** Complete (Data Pipeline Normalizer).
+- **Week 3:** In Progress (Task REST Endpoints & WebSocket Integration).
