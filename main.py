@@ -942,12 +942,20 @@ async def websocket_endpoint(websocket: WebSocket):
 # After approval, GitHub redirects back to /auth/github/callback
 # =====================================================================
 @app.get("/auth/github")
-async def github_login():
+async def github_login(repo: str = None):
     from fastapi.responses import RedirectResponse
+    import urllib.parse
+
+    # We pass the repo name through GitHub's "state" parameter
+    # GitHub preserves "state" through the OAuth flow and sends it back
+    # This is the standard way to pass data through OAuth redirects
+    state = urllib.parse.quote(repo) if repo else ""
+
     github_auth_url = (
         f"https://github.com/login/oauth/authorize"
         f"?client_id={GITHUB_CLIENT_ID}"
         f"&scope=read:user,repo,admin:repo_hook"
+        f"&state={state}"
     )
     return RedirectResponse(github_auth_url)
 
@@ -963,7 +971,7 @@ async def github_login():
 # /auth/github/callback?code=XXX&repo=username/reponame
 # =====================================================================
 @app.get("/auth/github/callback")
-async def github_callback(code: str, repo: str = None):
+async def github_callback(code: str, state: str = None):
     import httpx
 
     async with httpx.AsyncClient() as client:
@@ -999,6 +1007,9 @@ async def github_callback(code: str, repo: str = None):
         github_username = user_data.get("login")
 
     # Step 3 — Auto register webhook on their repo
+    # Decode the repo name from the state parameter
+    import urllib.parse
+    repo = urllib.parse.unquote(state) if state else None
     webhook_result = {"success": False, "note": "No repo provided"}
 
     if repo:
