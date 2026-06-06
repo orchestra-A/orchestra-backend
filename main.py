@@ -12,6 +12,7 @@ import hashlib
 
 # Import Member 4's normalizer and models
 from normalizer import normalize_event
+from state_machine import process_normalized_event
 from models import NormalizedEvent
 
 # =====================================================================
@@ -659,38 +660,38 @@ async def receive_github(request: Request):
         sys.stdout.flush()
         return {"received": True, "message": "Ping acknowledged"}
 
-    # ── STATE MACHINE ──────────────────────────────────────────
-    updated_tasks = []
-
-    if github_event == "push":
-        commits = payload.get("commits", [])
-        pusher = payload.get("pusher", {}).get("name", "unknown")
-        branch = payload.get("ref", "").replace("refs/heads/", "")
-
-        print(f"[STATE MACHINE] Push by {pusher} on branch {branch}")
-        print(f"[STATE MACHINE] Scanning {len(commits)} commit(s) for task references...")
-        sys.stdout.flush()
-
-        for commit in commits:
-            message = commit.get("message", "")
-            print(f"[STATE MACHINE] Commit message: '{message}'")
-            sys.stdout.flush()
-
-            task_refs = extract_task_references(message)
-
-            if task_refs:
-                print(f"[STATE MACHINE] Found task references: {task_refs}")
-                sys.stdout.flush()
-
-                for task_ref in task_refs:
-                    success = update_task_status(task_ref, "completed")
-                    if success:
-                        updated_tasks.append(f"task_{task_ref.zfill(3)}")
-            else:
-                print(f"[STATE MACHINE] No task references found in this commit")
-                sys.stdout.flush()
-
+    # ── NORMALIZE EVENT FIRST ──────────────────────────────────
     normalized = process_and_save("github", github_event, payload)
+
+    # ── SMART STATE MACHINE ────────────────────────────────────
+    updated_tasks = []
+    
+    # Pass the normalized dict straight to the engine
+    state_change = process_normalized_event(normalized.model_dump())
+    
+    if state_change:
+        # A state transition successfully happened!
+        updated_tasks.append(state_change["id"])
+        
+        # Get the old and new status from the history trail
+        last_transition = state_change["history"][-1] if state_change["history"] else {}
+        old_status = last_transition.get("from", "PENDING").lower() if last_transition.get("from") != "PENDING" else "todo"
+        new_status = state_change["status"]
+        
+        # ── WEBSOCKET BROADCAST ────────────────────────────────
+        try:
+            asyncio.create_task(manager.broadcast({
+                "type": "task_updated",
+                "task_id": state_change["id"],
+                "old_status": old_status,
+                "new_status": new_status,
+                "timestamp": datetime.now(timezone.utc).isoformat()
+            }))
+            print(f"[WEBSOCKET] 📡 Broadcast triggered for {state_change['id']}")
+            sys.stdout.flush()
+        except Exception as e:
+            print(f"[WEBSOCKET] ⚠️ Broadcast failed: {e}")
+            sys.stdout.flush()
 
     return {
         "received": True,
