@@ -31,6 +31,8 @@ app = FastAPI(
 GITHUB_CLIENT_ID = os.getenv("GITHUB_CLIENT_ID")
 GITHUB_CLIENT_SECRET = os.getenv("GITHUB_CLIENT_SECRET")
 GITHUB_WEBHOOK_SECRET_KEY = os.getenv("GITHUB_WEBHOOK_SECRET_KEY", "default_secret")
+DISCORD_CLIENT_ID = os.getenv("DISCORD_CLIENT_ID")
+DISCORD_CLIENT_SECRET = os.getenv("DISCORD_CLIENT_SECRET")
 
 # =====================================================================
 # WEBSOCKET CONNECTION MANAGER
@@ -245,6 +247,46 @@ def save_connected_user(
         json.dump(users, f, indent=2)
 
     print(f"[USER] ✅ Saved connected user: {github_username}")
+    sys.stdout.flush()
+
+def save_discord_user(
+    discord_id: str,
+    discord_username: str,
+    access_token: str,
+    email: str = None
+) -> None:
+    """
+    Saves a Discord connected user to discord_users.json
+    
+    When a user logs in with Discord, we save:
+    - Their Discord ID (unique identifier)
+    - Their username
+    - Their access token (for sending them DMs later via bot)
+    - Their email if they provided it
+    
+    This file is what the bot uses in Step 4 (daily standup)
+    to know who to send messages to.
+    """
+    filepath = "discord_users.json"
+
+    if os.path.exists(filepath):
+        with open(filepath, "r") as f:
+            users = json.load(f)
+    else:
+        users = {}
+
+    users[discord_id] = {
+        "discord_id": discord_id,
+        "discord_username": discord_username,
+        "access_token": access_token,
+        "email": email,
+        "connected_at": datetime.now(timezone.utc).isoformat()
+    }
+
+    with open(filepath, "w") as f:
+        json.dump(users, f, indent=2)
+
+    print(f"[DISCORD AUTH] ✅ Saved Discord user: {discord_username}")
     sys.stdout.flush()
 
 def initialize_tasks_file():
@@ -1069,6 +1111,149 @@ async def get_connected_users():
     result = {
         "total": len(safe_users),
         "connected_users": safe_users
+    }
+
+    formatted = json.dumps(result, indent=4)
+    return Response(content=formatted, media_type="application/json")
+
+# =====================================================================
+# Route — Discord OAuth Login
+# =====================================================================
+# User clicks "Login with Discord" on the frontend.
+# This redirects them to Discord's authorization page.
+#
+# Scopes we request:
+# identify  = get their username and Discord ID
+# email     = get their email address
+# guilds    = see which Discord servers they are in
+#             (needed later for bot to join their server)
+# =====================================================================
+@app.get("/auth/discord")
+async def discord_login():
+    from fastapi.responses import RedirectResponse
+
+    discord_auth_url = (
+        f"https://discord.com/oauth2/authorize"
+        f"?client_id={DISCORD_CLIENT_ID}"
+        f"&redirect_uri=https://orchestra-backend-2v5a.onrender.com/auth/discord/callback"
+        f"&response_type=code"
+        f"&scope=identify%20email%20guilds"
+    )
+    return RedirectResponse(discord_auth_url)
+
+
+# =====================================================================
+# Route — Discord OAuth Callback
+# =====================================================================
+# Discord redirects here after user approves access.
+# We exchange the code for a token and get their profile.
+#
+# What "identify" scope gives us:
+# - id          = their unique Discord ID (like "799906716887679028")
+# - username    = their Discord username (like "moonknight6006")
+# - avatar      = their profile picture
+# - email       = their email (if they approved email scope)
+#
+# We save all this to discord_users.json for the bot to use later.
+# =====================================================================
+@app.get("/auth/discord/callback")
+async def discord_callback(code: str):
+    import httpx
+
+    async with httpx.AsyncClient() as client:
+
+        # Step 1 — Exchange code for access token
+        token_response = await client.post(
+            "https://discord.com/api/oauth2/token",
+            data={
+                "client_id": DISCORD_CLIENT_ID,
+                "client_secret": DISCORD_CLIENT_SECRET,
+                "grant_type": "authorization_code",
+                "code": code,
+                "redirect_uri": "https://orchestra-backend-2v5a.onrender.com/auth/discord/callback"
+            },
+            headers={"Content-Type": "application/x-www-form-urlencoded"}
+        )
+        token_data = token_response.json()
+        access_token = token_data.get("access_token")
+
+        if not access_token:
+            return {
+                "error": "Failed to get access token from Discord",
+                "details": token_data
+            }
+
+        # Step 2 — Use token to get user's Discord profile
+        user_response = await client.get(
+            "https://discord.com/api/users/@me",
+            headers={
+                "Authorization": f"Bearer {access_token}"
+            }
+        )
+        user_data = user_response.json()
+
+        discord_id = user_data.get("id")
+        discord_username = user_data.get("username")
+        email = user_data.get("email")
+        avatar_hash = user_data.get("avatar")
+
+        # Build avatar URL if they have one
+        avatar_url = None
+        if avatar_hash:
+            avatar_url = f"https://cdn.discordapp.com/avatars/{discord_id}/{avatar_hash}.png"
+
+    # Step 3 — Save this user to our records
+    save_discord_user(
+        discord_id=discord_id,
+        discord_username=discord_username,
+        access_token=access_token,
+        email=email
+    )
+
+    return {
+        "message": "Discord login successful",
+        "user": {
+            "discord_id": discord_id,
+            "discord_username": discord_username,
+            "email": email,
+            "avatar": avatar_url
+        }
+    }
+
+
+# =====================================================================
+# Route — View Discord Connected Users
+# =====================================================================
+# GET /discord-users
+# Shows all users who logged in with Discord.
+# The bot will use this list for daily standup messages.
+# Access tokens are hidden from the response for security.
+# =====================================================================
+@app.get("/discord-users")
+async def get_discord_users():
+    from fastapi.responses import Response
+
+    filepath = "discord_users.json"
+
+    if not os.path.exists(filepath):
+        return {"total": 0, "users": []}
+
+    with open(filepath, "r") as f:
+        users = json.load(f)
+
+    # Never expose access tokens in API responses
+    safe_users = []
+    for discord_id, data in users.items():
+        safe_users.append({
+            "discord_id": data.get("discord_id"),
+            "discord_username": data.get("discord_username"),
+            "email": data.get("email"),
+            "connected_at": data.get("connected_at")
+        })
+
+    result = {
+        "total": len(safe_users),
+        "discord_users": safe_users
     }
 
     formatted = json.dumps(result, indent=4)
