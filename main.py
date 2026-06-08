@@ -705,11 +705,18 @@ async def receive_github(request: Request):
     # ── NORMALIZE EVENT FIRST ──────────────────────────────────
     normalized = process_and_save("github", github_event, payload)
 
+    # ── WEBSOCKET BROADCAST: New Event ─────────────────────────
+    # Broadcast every new event to the frontend feed
+    asyncio.create_task(manager.broadcast({
+        "type": "new_event",
+        **normalized.model_dump()
+    }))
+
     # ── SMART STATE MACHINE ────────────────────────────────────
     updated_tasks = []
     
-    # Pass the normalized dict straight to the engine
-    state_change = process_normalized_event(normalized.model_dump())
+    # Pass the normalized dict straight to the engine (now async)
+    state_change = await process_normalized_event(normalized.model_dump())
     
     if state_change:
         # A state transition successfully happened!

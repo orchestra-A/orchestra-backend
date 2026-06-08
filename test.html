@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Orchestra WebSocket Test</title>
+  <style>
+    body { background-color: #1e1e1e; color: #00ff00; font-family: monospace; padding: 20px; }
+    #log { white-space: pre-wrap; font-size: 14px; }
+  </style>
+</head>
+<body>
+  <h2>Orchestra Backend — Live WebSocket Feed</h2>
+  <pre id="log">Waiting for connection...</pre>
+  <script>
+    // Using NATIVE WebSockets (Member 3's implementation) instead of Socket.IO
+    const ws = new WebSocket("ws://localhost:8000/ws");
+    const log = (msg) => {
+      document.getElementById("log").textContent += "\n" + msg;
+      window.scrollTo(0, document.body.scrollHeight);
+    };
+
+    ws.onopen = () => log("✅ Connected to native FastAPI WebSocket!");
+    
+    ws.onmessage = (event) => {
+      const data = JSON.parse(event.data);
+      if (data.type === "new_event") {
+        log("🔔 New Event Broadcast: " + data.action_summary);
+      } else if (data.type === "task_update") {
+        log("🔄 Task Update: " + data.id + " is now " + data.state);
+      } else if (data.type === "task_updated") {
+        log("🔄 Task Updated: " + data.task_id + " is now " + data.new_status);
+      } else if (data.type === "connection_established") {
+        log("🎉 " + data.message);
+      } else {
+        log("📦 Payload: " + JSON.stringify(data));
+      }
+    };
+
+    ws.onclose = () => log("❌ Connection lost.");
+  </script>
+</body>
+</html>

@@ -186,7 +186,7 @@ def extract_task_id_from_pr_title(title: str) -> Optional[str]:
     return None
 
 
-def handle_push_event(event: dict) -> Optional[dict]:
+async def handle_push_event(event: dict) -> Optional[dict]:
     """
     GitHub push → check if branch name contains a task ID
     If yes, move that task to IN_PROGRESS.
@@ -217,11 +217,17 @@ def handle_push_event(event: dict) -> Optional[dict]:
 
     if changed:
         upsert_task(task)
-        return task.to_dict()
+        task_dict = task.to_dict()
+        
+        # Broadcast the update dynamically to avoid circular import
+        from main import manager
+        await manager.broadcast({"type": "task_update", **task_dict})
+        
+        return task_dict
     return None
 
 
-def handle_pr_event(event: dict) -> Optional[dict]:
+async def handle_pr_event(event: dict) -> Optional[dict]:
     """
     GitHub PR event → check if PR title or branch contains a task ID
     - PR opened → IN_PROGRESS
@@ -271,12 +277,18 @@ def handle_pr_event(event: dict) -> Optional[dict]:
         changed = task.transition(target_state, actor=actor, reason=reason)
         if changed:
             upsert_task(task)
-            return task.to_dict()
+            task_dict = task.to_dict()
+            
+            # Broadcast the update dynamically to avoid circular import
+            from main import manager
+            await manager.broadcast({"type": "task_update", **task_dict})
+            
+            return task_dict
 
     return None
 
 
-def process_normalized_event(event: dict) -> Optional[dict]:
+async def process_normalized_event(event: dict) -> Optional[dict]:
     """
     Main entry point — routes normalized events to the right handler.
     Call this from main.py when a new event arrives.
@@ -288,8 +300,8 @@ def process_normalized_event(event: dict) -> Optional[dict]:
         return None  # State machine only cares about GitHub for now
 
     if event_type == "push":
-        return handle_push_event(event)
+        return await handle_push_event(event)
     elif event_type == "pull_request":
-        return handle_pr_event(event)
+        return await handle_pr_event(event)
 
     return None
