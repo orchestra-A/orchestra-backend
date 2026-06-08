@@ -7,6 +7,8 @@ from fastapi.websockets import WebSocket, WebSocketDisconnect
 from typing import List
 import asyncio
 import re
+import discord
+from discord.ext import tasks
 import hmac
 import hashlib
 
@@ -21,19 +23,32 @@ from models import NormalizedEvent
 app = FastAPI(
     title="Timeline Orchestra Backend",
     description="Infrastructure layer for Timeline Orchestra",
-    version="0.4.0"
+    version="0.7.0"
 )
+
+@app.on_event("startup")
+async def startup_event():
+    """
+    Runs when FastAPI server starts.
+    Starts the Discord bot as a background task.
+    Bot runs alongside your server forever.
+    """
+    print("[STARTUP] Server starting...")
+    sys.stdout.flush()
+    asyncio.create_task(start_discord_bot())
+    print("[STARTUP] Discord bot task created")
+    sys.stdout.flush()
 
 # =====================================================================
 # Environment Variables
-# GitHub OAuth credentials — stored in .env file, never hardcoded
+# GitHub & Discord OAuth credentials — stored in .env file, never hardcoded
 # =====================================================================
 GITHUB_CLIENT_ID = os.getenv("GITHUB_CLIENT_ID")
 GITHUB_CLIENT_SECRET = os.getenv("GITHUB_CLIENT_SECRET")
 GITHUB_WEBHOOK_SECRET_KEY = os.getenv("GITHUB_WEBHOOK_SECRET_KEY", "default_secret")
 DISCORD_CLIENT_ID = os.getenv("DISCORD_CLIENT_ID")
 DISCORD_CLIENT_SECRET = os.getenv("DISCORD_CLIENT_SECRET")
-
+DISCORD_BOT_TOKEN = os.getenv("DISCORD_BOT_TOKEN")
 # =====================================================================
 # WEBSOCKET CONNECTION MANAGER
 # =====================================================================
@@ -289,6 +304,39 @@ def save_discord_user(
     print(f"[DISCORD AUTH] ✅ Saved Discord user: {discord_username}")
     sys.stdout.flush()
 
+def update_member_activity(actor: str, content: str, timestamp: str) -> None:
+    """
+    Updates what each team member is working on.
+    Called every time a Discord message arrives.
+
+    Builds a picture like:
+    "Arjun is working on: Just finished the login page"
+
+    This is what gets shown on the Orchestra dashboard as:
+    Member X is doing: ----
+    Member Y is doing: ----
+    """
+    filepath = "discord_activity.json"
+
+    if os.path.exists(filepath):
+        with open(filepath, "r") as f:
+            activity = json.load(f)
+    else:
+        activity = {}
+
+    activity[actor] = {
+        "actor": actor,
+        "latest_message": content,
+        "last_seen": timestamp,
+        "message_count": activity.get(actor, {}).get("message_count", 0) + 1
+    }
+
+    with open(filepath, "w") as f:
+        json.dump(activity, f, indent=2)
+
+    print(f"[ACTIVITY] Updated activity for {actor}: {content[:40]}")
+    sys.stdout.flush()
+
 def initialize_tasks_file():
     if not os.path.exists("tasks.json"):
         tasks_data = {
@@ -463,6 +511,127 @@ def initialize_tasks_file():
 # Run on startup
 initialize_tasks_file()
 
+# =====================================================================
+# DISCORD BOT
+# =====================================================================
+# This bot runs as a background task inside your FastAPI server.
+# When your server starts, the bot logs in to Discord automatically.
+#
+# What the bot does:
+# 1. Sits in your team's Discord server
+# 2. Reads every message sent in the channels it can see
+# 3. Forwards messages to your /webhook/discord logic directly
+# 4. Sends daily standup summaries (Step 4 — built next)
+#
+# Think of it as a team member who never sleeps and reads
+# every message in the Discord server and reports it to Orchestra.
+# =====================================================================
+
+# Set up Discord bot with all necessary permissions
+# intents = what the bot is allowed to do
+intents = discord.Intents.default()
+intents.message_content = True    # Can read message text
+intents.members = True            # Can see server members
+intents.guilds = True             # Can see servers it's in
+intents.messages = True           # Can receive message events
+
+bot = discord.Client(intents=intents)
+
+
+@bot.event
+async def on_ready():
+    """
+    Fires when bot successfully logs in to Discord.
+    Think of it like the bot saying "I'm here, ready to work."
+    """
+    print(f"[DISCORD BOT] ✅ Bot logged in as: {bot.user.name}")
+    print(f"[DISCORD BOT] Connected to {len(bot.guilds)} server(s)")
+    for guild in bot.guilds:
+        print(f"[DISCORD BOT] - {guild.name} (id: {guild.id})")
+    sys.stdout.flush()
+
+
+@bot.event
+async def on_message(message):
+    """
+    Fires every time someone sends a message in any channel
+    the bot can see.
+
+    What we do:
+    1. Ignore messages from the bot itself (prevents infinite loops)
+    2. Ignore empty messages
+    3. Build a payload in the same format as our /webhook/discord expects
+    4. Call our existing processing logic directly
+    5. Update member activity tracker
+
+    This replaces Make.com completely.
+    Real message text is now captured properly.
+    """
+    # Ignore messages from the bot itself
+    if message.author == bot.user:
+        return
+
+    # Ignore empty messages (images, stickers with no text)
+    if not message.content:
+        return
+
+    print(f"[DISCORD BOT] 📨 Message from {message.author.name}: {message.content[:50]}")
+    sys.stdout.flush()
+
+    # Build payload in same format as /webhook/discord expects
+    # This way our existing normalizer handles it exactly the same
+    payload = {
+        "type": 0,
+        "channel_id": str(message.channel.id),
+        "channel_name": str(message.channel.name),
+        "content": message.content,
+        "author": message.author.name,
+        "author_id": str(message.author.id),
+        "guild_id": str(message.guild.id) if message.guild else None,
+        "message_id": str(message.id),
+        "timestamp": message.created_at.isoformat()
+    }
+
+    # Update member activity tracker
+    # This builds "Member X is working on: ..."
+    update_member_activity(
+        actor=message.author.name,
+        content=message.content,
+        timestamp=message.created_at.isoformat()
+    )
+
+    # Save as normalized event using existing pipeline
+    # Same as if it came through /webhook/discord
+    try:
+        from normalizer import normalize_event
+        normalized = normalize_event("discord_message", payload)
+        save_normalized_event(normalized)
+        print(f"[DISCORD BOT] ✅ Message normalized and saved")
+        sys.stdout.flush()
+    except Exception as e:
+        print(f"[DISCORD BOT] ⚠️ Normalization error: {e}")
+        sys.stdout.flush()
+
+
+async def start_discord_bot():
+    """
+    Starts the Discord bot.
+    Called when FastAPI server starts up.
+    Runs forever in the background alongside your server.
+    """
+    if not DISCORD_BOT_TOKEN:
+        print("[DISCORD BOT] ⚠️ No bot token found. Bot not starting.")
+        print("[DISCORD BOT] Add DISCORD_BOT_TOKEN to your .env file")
+        sys.stdout.flush()
+        return
+
+    try:
+        print("[DISCORD BOT] Starting...")
+        sys.stdout.flush()
+        await bot.start(DISCORD_BOT_TOKEN)
+    except Exception as e:
+        print(f"[DISCORD BOT] ❌ Failed to start: {e}")
+        sys.stdout.flush()
 
 # =====================================================================
 # Shared Infrastructure Helpers
@@ -1261,6 +1430,48 @@ async def get_discord_users():
     result = {
         "total": len(safe_users),
         "discord_users": safe_users
+    }
+
+    formatted = json.dumps(result, indent=4)
+    return Response(content=formatted, media_type="application/json")
+
+# =====================================================================
+# Route — Discord Activity Summary
+# =====================================================================
+# GET /discord/activity
+#
+# Shows what each team member is currently working on
+# based on their Discord messages.
+#
+# This is displayed on Orchestra dashboard as:
+# "Member X is doing: GUI and Visualizer work"
+# "Member Y is doing: utility integration"
+# =====================================================================
+@app.get("/discord/activity")
+async def get_discord_activity():
+    from fastapi.responses import Response
+
+    filepath = "discord_activity.json"
+
+    if not os.path.exists(filepath):
+        return {"total_members": 0, "activity": []}
+
+    with open(filepath, "r") as f:
+        activity = json.load(f)
+
+    summary = []
+    for actor, data in activity.items():
+        summary.append({
+            "member": actor,
+            "currently_working_on": data.get("latest_message", "No recent updates"),
+            "last_seen": data.get("last_seen", "unknown"),
+            "total_messages": data.get("message_count", 0)
+        })
+
+    result = {
+        "total_members_active": len(summary),
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "team_activity": summary
     }
 
     formatted = json.dumps(result, indent=4)
