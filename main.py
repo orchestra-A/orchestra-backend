@@ -813,7 +813,7 @@ async def get_tasks():
 async def get_tasks_live():
     import urllib.request
     from fastapi import Response
-    url = "https://orchestra-ai-production.up.railway.app/tasks"
+    url = "https://orchestra-backend-2v5a.onrender.com/tasks"
     try:
         req = urllib.request.Request(url)
         with urllib.request.urlopen(req, timeout=10) as response:
@@ -948,7 +948,7 @@ async def get_events():
 # }
 #
 # URL TO GIVE MEMBER 5:
-# wss://web-production-30f40.up.railway.app/ws
+# wss://orchestra-backend-2v5a.onrender.com/ws
 #
 # NOTE: wss:// is the secure version of ws:// — same as https vs http
 # =====================================================================
