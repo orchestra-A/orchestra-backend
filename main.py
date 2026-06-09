@@ -449,7 +449,7 @@ def initialize_tasks_file():
                     "title": "Set up Neo4j database schema",
                     "description": "Define node types and relationship models.",
                     "status": "completed",
-                    "assigned_to": "Member 2 — Knowledge Graph Engineer",
+                    "assigned_to": "Member 2",
                     "platform": "github",
                     "priority": "high",
                     "created_at": "2025-05-28T09:00:00Z",
@@ -462,7 +462,7 @@ def initialize_tasks_file():
                     "title": "Build semantic data normalizer",
                     "description": "Scrub incoming platform events into clean uniform data blocks.",
                     "status": "in_progress",
-                    "assigned_to": "Member 4 — Data Pipeline Engineer",
+                    "assigned_to": "Member 4",
                     "platform": "github",
                     "priority": "high",
                     "created_at": "2025-05-28T09:00:00Z",
@@ -475,7 +475,7 @@ def initialize_tasks_file():
                     "title": "Connect reactflow canvas to backend",
                     "description": "Replace static mock files with live database endpoints.",
                     "status": "in_progress",
-                    "assigned_to": "Member 5 — Interactive Canvas Specialist",
+                    "assigned_to": "Member 5",
                     "platform": "figma",
                     "priority": "medium",
                     "created_at": "2025-05-29T11:00:00Z",
@@ -488,7 +488,7 @@ def initialize_tasks_file():
                     "title": "Implement Connect Workspaces UI",
                     "description": "Build authentication screens for team tool integrations.",
                     "status": "in_progress",
-                    "assigned_to": "Member 6 — Interface Developer",
+                    "assigned_to": "Member 6",
                     "platform": "figma",
                     "priority": "medium",
                     "created_at": "2025-05-29T11:00:00Z",
@@ -501,7 +501,7 @@ def initialize_tasks_file():
                     "title": "Configure Discord webhook listener",
                     "description": "Expand FastAPI server to natively catch Discord events.",
                     "status": "completed",
-                    "assigned_to": "Member 3 — Infrastructure Engineer",
+                    "assigned_to": "Member 3",
                     "platform": "discord",
                     "priority": "high",
                     "created_at": "2025-06-01T08:00:00Z",
@@ -514,7 +514,7 @@ def initialize_tasks_file():
                     "title": "Configure Figma webhook listener",
                     "description": "Expand FastAPI server to natively catch Figma design events.",
                     "status": "completed",
-                    "assigned_to": "Member 3 — Infrastructure Engineer",
+                    "assigned_to": "Member 3",
                     "platform": "figma",
                     "priority": "high",
                     "created_at": "2025-06-01T08:00:00Z",
@@ -527,7 +527,7 @@ def initialize_tasks_file():
                     "title": "LLM JSON extraction prompting",
                     "description": "Force LLM to respond only in structured valid JSON.",
                     "status": "completed",
-                    "assigned_to": "Member 1 — Agent Architect",
+                    "assigned_to": "Member 1",
                     "platform": "github",
                     "priority": "high",
                     "created_at": "2025-05-28T09:00:00Z",
@@ -540,7 +540,7 @@ def initialize_tasks_file():
                     "title": "GitHub State Machine setup",
                     "description": "Auto-update task status when matching pull requests are submitted.",
                     "status": "todo",
-                    "assigned_to": "Member 3 — Infrastructure Engineer",
+                    "assigned_to": "Member 3",
                     "platform": "github",
                     "priority": "high",
                     "created_at": "2025-06-01T08:00:00Z",
@@ -553,7 +553,7 @@ def initialize_tasks_file():
                     "title": "Design new landing page",
                     "description": "Create wireframes and mockups for the marketing site.",
                     "status": "completed",
-                    "assigned_to": "Member 6 — Interface Developer",
+                    "assigned_to": "Member 6",
                     "platform": "figma",
                     "priority": "high",
                     "created_at": "2025-06-02T08:00:00Z",
@@ -566,7 +566,7 @@ def initialize_tasks_file():
                     "title": "Write copy for landing page",
                     "description": "Draft marketing copy and value propositions.",
                     "status": "todo",
-                    "assigned_to": "Member 1 — Agent Architect",
+                    "assigned_to": "Member 1",
                     "platform": "discord",
                     "priority": "medium",
                     "created_at": "2025-06-02T09:00:00Z",
@@ -579,7 +579,7 @@ def initialize_tasks_file():
                     "title": "Setup React Native CLI",
                     "description": "Initialize the bare React Native project.",
                     "status": "todo",
-                    "assigned_to": "Member 5 — Interactive Canvas Specialist",
+                    "assigned_to": "Member 5",
                     "platform": "github",
                     "priority": "high",
                     "created_at": "2025-06-03T10:00:00Z",
@@ -592,7 +592,7 @@ def initialize_tasks_file():
                     "title": "Define tracking plan",
                     "description": "Map out all funnel events for mixpanel.",
                     "status": "in_progress",
-                    "assigned_to": "Member 4 — Data Pipeline Engineer",
+                    "assigned_to": "Member 4",
                     "platform": "figma",
                     "priority": "medium",
                     "created_at": "2025-06-04T11:00:00Z",
@@ -600,6 +600,25 @@ def initialize_tasks_file():
                 }
             ]
         }
+        
+        # --- NEW DEPENDENCY LOGIC ---
+        from collections import defaultdict
+        project_order_tasks = defaultdict(lambda: defaultdict(list))
+        
+        for task in tasks_data["tasks"]:
+            pid = task.get("project_id")
+            order = task.get("order")
+            if pid and order:
+                project_order_tasks[pid][order].append(task["id"])
+                
+        for task in tasks_data["tasks"]:
+            pid = task.get("project_id")
+            order = task.get("order")
+            task["depends_on"] = []
+            if pid and order and order > 1:
+                task["depends_on"] = project_order_tasks[pid][order - 1]
+        # ----------------------------
+
         with open("tasks.json", "w") as f:
             json.dump(tasks_data, f, indent=2)
         print("[STARTUP] tasks.json initialized successfully")
