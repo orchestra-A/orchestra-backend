@@ -39,6 +39,18 @@ async def startup_event():
     print("[STARTUP] Discord bot task created")
     sys.stdout.flush()
 
+    from scheduler import start_scheduler
+    start_scheduler()
+    print("[STARTUP] WebSocket Cron Scheduler started")
+    sys.stdout.flush()
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    from scheduler import stop_scheduler
+    stop_scheduler()
+    print("[SHUTDOWN] WebSocket Cron Scheduler stopped")
+    sys.stdout.flush()
+
 # =====================================================================
 # Environment Variables
 # GitHub & Discord OAuth credentials — stored in .env file 
@@ -124,7 +136,7 @@ def generate_user_webhook_secret(github_username: str) -> str:
     """
     Generates a unique webhook secret for each user.
 
-    Why unique per user?
+    Why unique per user
     When 100 different teams connect their GitHub repos,
     each team's events need to be verified separately.
     If everyone shared one secret and it leaked, all teams
@@ -1015,8 +1027,8 @@ def extract_task_references(commit_message: str) -> list:
     Returns a list of task IDs found in the message.
     """
     patterns = [
-        r'(?:fixes|closes|resolves)\s+task[_\s#]+(\d+)',
-        r'(?:fixes|closes|resolves)\s+#(\d+)',
+        r'(:fixes|closes|resolves)\s+task[_\s#]+(\d+)',
+        r'(:fixes|closes|resolves)\s+#(\d+)',
         r'task[_\s#]+(\d+)',
     ]
     found = []
@@ -1498,7 +1510,7 @@ async def github_login(repo: str = None):
 
     github_auth_url = (
         f"https://github.com/login/oauth/authorize"
-        f"?client_id={GITHUB_CLIENT_ID}"
+        f"client_id={GITHUB_CLIENT_ID}"
         f"&scope=read:user,repo,admin:repo_hook"
         f"&state={state}"
     )
@@ -1513,7 +1525,7 @@ async def github_login(repo: str = None):
 # then automatically register a webhook on their repo.
 #
 # User passes their repo like this:
-# /auth/github/callback?code=XXX&repo=username/reponame
+# /auth/github/callbackcode=XXX&repo=username/reponame
 # =====================================================================
 @app.get("/auth/github/callback")
 async def github_callback(code: str, state: str = None):
@@ -1641,7 +1653,7 @@ async def discord_login():
 
     discord_auth_url = (
         f"https://discord.com/oauth2/authorize"
-        f"?client_id={DISCORD_CLIENT_ID}"
+        f"client_id={DISCORD_CLIENT_ID}"
         f"&redirect_uri=https://orchestra-backend-2v5a.onrender.com/auth/discord/callback"
         f"&response_type=code"
         f"&scope=identify%20email%20guilds"
@@ -1733,7 +1745,7 @@ async def discord_callback(code: str):
     },
     "next_step": {
         "action": "Add Orchestra Bot to your Discord server",
-        "bot_invite_url": f"https://discord.com/oauth2/authorize?client_id={DISCORD_CLIENT_ID}&permissions=84992&scope=bot",
+        "bot_invite_url": f"https://discord.com/oauth2/authorizeclient_id={DISCORD_CLIENT_ID}&permissions=84992&scope=bot",
         "instructions": "Open the bot_invite_url and select your team's Discord server to add Orchestra Bot"
     }
 }

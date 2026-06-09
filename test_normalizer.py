@@ -180,7 +180,7 @@ section("Test 6: Discord Message Event")
 
 discord_payload = {
     "id": "1234567890123456789",
-    "content": "Hey team, just pushed the normalizer — can someone review?",
+    "content": "Hey team, just pushed the normalizer — can someone review",
     "channel_id": "987654321",
     "guild_id": "111222333",
     "timestamp": "2026-05-20T12:00:00.000Z",
