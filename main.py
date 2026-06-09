@@ -1874,6 +1874,16 @@ async def get_discord_activity():
     formatted = json.dumps(result, indent=4)
     return Response(content=formatted, media_type="application/json")
 
+@app.get("/test/standup")
+async def test_standup():
+    print("[TEST] Manually triggering standup...")
+    sys.stdout.flush()
+    await run_daily_standup()
+    return {
+        "message": "Standup triggered manually",
+        "check": "Your Discord DMs for the standup message"
+    }
+
 # =====================================================================
 # Route — Trigger Daily Standup Manually
 # =====================================================================
