@@ -39,6 +39,7 @@ class Task:
     pr_number: Optional[int] = None
     branch: Optional[str] = None
     history: list = field(default_factory=list)
+    confirmed: bool = False
 
     def transition(self, new_state: TaskState, actor: str, reason: str = "") -> bool:
         """
@@ -75,6 +76,7 @@ class Task:
             "pr_number": self.pr_number,
             "branch": self.branch,
             "history": self.history,
+            "confirmed": self.confirmed,
         }
 
     @classmethod
@@ -96,6 +98,7 @@ class Task:
             pr_number=d.get("pr_number"),
             branch=d.get("branch"),
             history=d.get("history", []),
+            confirmed=d.get("confirmed", False),
         )
         return t
 

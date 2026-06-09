@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 import json
 import sys
 import os
@@ -41,7 +41,7 @@ async def startup_event():
 
 # =====================================================================
 # Environment Variables
-# GitHub & Discord OAuth credentials — stored in .env file, never hardcoded
+# GitHub & Discord OAuth credentials — stored in .env file 
 # =====================================================================
 GITHUB_CLIENT_ID = os.getenv("GITHUB_CLIENT_ID")
 GITHUB_CLIENT_SECRET = os.getenv("GITHUB_CLIENT_SECRET")
@@ -304,6 +304,94 @@ def save_discord_user(
     print(f"[DISCORD AUTH] ✅ Saved Discord user: {discord_username}")
     sys.stdout.flush()
 
+def save_unified_user_profile(
+    github_username: str = None,
+    github_access_token: str = None,
+    discord_id: str = None,
+    discord_username: str = None,
+    discord_access_token: str = None,
+    email: str = None
+) -> dict:
+    """
+    Creates or updates a unified user profile.
+    
+    This is the central identity record for each user.
+    Links their GitHub and Discord accounts together.
+    
+    When someone signs up with GitHub:
+    - Creates profile with github_username
+    - discord fields are null until they connect Discord
+    
+    When they later connect Discord:
+    - Finds their existing profile by email or github_username
+    - Adds their Discord identity to the same profile
+    
+    This is how Orchestra knows:
+    SarvyagyaPrakash (GitHub) = moonknight6006 (Discord)
+    """
+    filepath = "user_profiles.json"
+
+    if os.path.exists(filepath):
+        with open(filepath, "r") as f:
+            profiles = json.load(f)
+    else:
+        profiles = {}
+
+    # Try to find existing profile
+    # Match by email (most reliable) or github_username
+    existing_key = None
+
+    for key, profile in profiles.items():
+        if email and profile.get("email") == email:
+            existing_key = key
+            break
+        if github_username and profile.get("github_username") == github_username:
+            existing_key = key
+            break
+        if discord_id and profile.get("discord_id") == discord_id:
+            existing_key = key
+            break
+
+    if existing_key:
+        # Update existing profile with new platform info
+        if github_username:
+            profiles[existing_key]["github_username"] = github_username
+        if github_access_token:
+            profiles[existing_key]["github_access_token"] = github_access_token
+        if discord_id:
+            profiles[existing_key]["discord_id"] = discord_id
+        if discord_username:
+            profiles[existing_key]["discord_username"] = discord_username
+        if discord_access_token:
+            profiles[existing_key]["discord_access_token"] = discord_access_token
+        if email:
+            profiles[existing_key]["email"] = email
+        profiles[existing_key]["updated_at"] = datetime.now(timezone.utc).isoformat()
+        user_id = existing_key
+        print(f"[USER PROFILE] ✅ Updated profile for {existing_key}")
+    else:
+        # Create new profile
+        import uuid
+        user_id = f"usr_{str(uuid.uuid4())[:8]}"
+        profiles[user_id] = {
+            "user_id": user_id,
+            "email": email,
+            "github_username": github_username,
+            "github_access_token": github_access_token,
+            "discord_id": discord_id,
+            "discord_username": discord_username,
+            "discord_access_token": discord_access_token,
+            "created_at": datetime.now(timezone.utc).isoformat(),
+            "updated_at": datetime.now(timezone.utc).isoformat()
+        }
+        print(f"[USER PROFILE] ✅ Created new profile: {user_id}")
+
+    with open(filepath, "w") as f:
+        json.dump(profiles, f, indent=2)
+
+    sys.stdout.flush()
+    return profiles[user_id]
+
 def update_member_activity(actor: str, content: str, timestamp: str) -> None:
     """
     Updates what each team member is working on.
@@ -550,6 +638,12 @@ async def on_ready():
         print(f"[DISCORD BOT] - {guild.name} (id: {guild.id})")
     sys.stdout.flush()
 
+    # Start the standup scheduler loop if not already running
+    if not standup_scheduler.is_running():
+        standup_scheduler.start()
+        print("[DISCORD BOT] ⏰ Daily Standup Scheduler started (9:00 AM)")
+        sys.stdout.flush()
+
 
 @bot.event
 async def on_message(message):
@@ -632,6 +726,239 @@ async def start_discord_bot():
     except Exception as e:
         print(f"[DISCORD BOT] ❌ Failed to start: {e}")
         sys.stdout.flush()
+
+# =====================================================================
+# DAILY STANDUP BOT
+# =====================================================================
+# State of the last standup run date (to avoid running multiple times in 9:00 AM minute)
+last_standup_run_date = ""
+
+class StandupButtonsView(discord.ui.View):
+    def __init__(self, task_ids: list, member_name: str):
+        super().__init__(timeout=None)  # Persistent view
+        self.task_ids = task_ids
+        self.member_name = member_name
+
+    @discord.ui.button(label="Confirm ⬜", style=discord.ButtonStyle.secondary, custom_id="standup_confirm")
+    async def confirm_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        button.label = "Confirm ✅"
+        button.style = discord.ButtonStyle.success
+        button.disabled = True
+        
+        for child in self.children:
+            if child.custom_id != "standup_confirm":
+                child.disabled = True
+                if child.custom_id == "standup_edit":
+                    child.label = "Edit ➡️⬜"
+                elif child.custom_id == "standup_skip":
+                    child.label = "Skip ⬜⬜"
+
+        await interaction.response.edit_message(view=self)
+        await confirm_standup_tasks(self.task_ids, self.member_name)
+        await interaction.followup.send("Daily standup confirmed! Tasks updated and broadcasted.", ephemeral=True)
+
+    @discord.ui.button(label="Edit ➡️⬜", style=discord.ButtonStyle.secondary, custom_id="standup_edit")
+    async def edit_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        button.label = "Edit ➡️ Selected"
+        button.disabled = True
+        for child in self.children:
+            if child.custom_id != "standup_edit":
+                child.disabled = True
+        await interaction.response.edit_message(view=self)
+        await interaction.followup.send("Standup edit selected. Please update your tasks on the Orchestra dashboard.", ephemeral=True)
+
+    @discord.ui.button(label="Skip ⬜⬜", style=discord.ButtonStyle.secondary, custom_id="standup_skip")
+    async def skip_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        button.label = "Skipped ❌"
+        button.style = discord.ButtonStyle.danger
+        button.disabled = True
+        for child in self.children:
+            if child.custom_id != "standup_skip":
+                child.disabled = True
+        await interaction.response.edit_message(view=self)
+        await interaction.followup.send("Daily standup skipped.", ephemeral=True)
+
+
+def users_match(actor1: str, actor2: str) -> bool:
+    if not actor1 or not actor2:
+        return False
+    a1 = actor1.lower().strip()
+    a2 = actor2.lower().strip()
+    if " — " in a1:
+        a1 = a1.split(" — ")[0].strip()
+    if " — " in a2:
+        a2 = a2.split(" — ")[0].strip()
+    return a1 == a2 or a1 in a2 or a2 in a1
+
+
+def get_user_standup_data(member_username: str):
+    completed_yesterday = []
+    in_progress = []
+    task_ids = []
+
+    tasks_filepath = "tasks.json"
+    if not os.path.exists(tasks_filepath):
+        return completed_yesterday, in_progress, task_ids
+
+    with open(tasks_filepath, "r") as f:
+        tasks_data = json.load(f)
+
+    events_filepath = "events.json"
+    recent_task_ids = set()
+    now = datetime.now(timezone.utc)
+    yesterday = now - timedelta(days=1)
+
+    if os.path.exists(events_filepath):
+        try:
+            with open(events_filepath, "r") as f:
+                events = json.load(f)
+            for event in events:
+                event_time_str = event.get("timestamp")
+                if event_time_str:
+                    event_time = datetime.fromisoformat(event_time_str.replace('Z', '+00:00'))
+                    if event_time >= yesterday:
+                        if users_match(event.get("actor"), member_username):
+                            summary = event.get("action_summary", "")
+                            refs = extract_task_references(summary)
+                            for ref in refs:
+                                recent_task_ids.add(f"task_{ref.zfill(3)}")
+                            
+                            commits = event.get("raw_metadata", {}).get("commits", [])
+                            for commit in commits:
+                                commit_msg = commit.get("message", "")
+                                refs = extract_task_references(commit_msg)
+                                for ref in refs:
+                                    recent_task_ids.add(f"task_{ref.zfill(3)}")
+        except Exception as e:
+            print(f"[STANDUP BOT] Error reading events.json: {e}")
+            sys.stdout.flush()
+
+    for task in tasks_data.get("tasks", []):
+        task_id = task["id"]
+        assigned = task.get("assigned_to")
+        
+        is_assigned = users_match(assigned, member_username)
+        is_recent_activity = task_id in recent_task_ids
+        
+        if is_assigned or is_recent_activity:
+            status = task.get("status", "").lower()
+            if status == "completed":
+                updated_at_str = task.get("updated_at")
+                is_completed_yesterday = False
+                if updated_at_str:
+                    try:
+                        updated_at = datetime.fromisoformat(updated_at_str.replace('Z', '+00:00'))
+                        if updated_at >= yesterday:
+                            is_completed_yesterday = True
+                    except Exception:
+                        pass
+                if is_completed_yesterday or is_recent_activity:
+                    completed_yesterday.append(task)
+                    task_ids.append(task_id)
+            elif status == "in_progress":
+                in_progress.append(task)
+                task_ids.append(task_id)
+
+    return completed_yesterday, in_progress, task_ids
+
+
+async def confirm_standup_tasks(task_ids: list, member_name: str):
+    filepath = "tasks.json"
+    if not os.path.exists(filepath):
+        return
+
+    with open(filepath, "r") as f:
+        data = json.load(f)
+
+    updated_tasks = []
+    for task in data.get("tasks", []):
+        if task["id"] in task_ids:
+            task["confirmed"] = True
+            task["updated_at"] = datetime.now(timezone.utc).isoformat()
+            updated_tasks.append(task["id"])
+
+    if updated_tasks:
+        with open(filepath, "w") as f:
+            json.dump(data, f, indent=2)
+
+        print(f"[STANDUP BOT] ✅ Confirmed tasks for {member_name}: {updated_tasks}")
+        sys.stdout.flush()
+
+        try:
+            await manager.broadcast({
+                "type": "tasks_confirmed",
+                "task_ids": updated_tasks,
+                "confirmed_by": member_name,
+                "timestamp": datetime.now(timezone.utc).isoformat()
+            })
+            print(f"[WEBSOCKET] 📡 Broadcast standup confirmation for {updated_tasks}")
+            sys.stdout.flush()
+        except Exception as e:
+            print(f"[WEBSOCKET] ⚠️ Standup confirmation broadcast failed: {e}")
+            sys.stdout.flush()
+
+
+async def run_daily_standup():
+    print("[STANDUP BOT] Running daily standup summary check...")
+    sys.stdout.flush()
+    
+    users_filepath = "discord_users.json"
+    if not os.path.exists(users_filepath):
+        print("[STANDUP BOT] No discord_users.json found. Skipping.")
+        sys.stdout.flush()
+        return
+
+    with open(users_filepath, "r") as f:
+        users = json.load(f)
+
+    for discord_id, user_data in users.items():
+        discord_username = user_data.get("discord_username")
+        print(f"[STANDUP BOT] Processing user {discord_username} ({discord_id})...")
+        sys.stdout.flush()
+
+        completed, in_progress, task_ids = get_user_standup_data(discord_username)
+
+        # Build message
+        msg = f"Hey {discord_username}! Here is your daily update:\n\n"
+        
+        msg += "Completed yesterday:\n"
+        if completed:
+            for task in completed:
+                msg += f" - {task['id']}: {task['title']}\n"
+        else:
+            msg += " - None\n"
+            
+        msg += "\nIn Progress:\n"
+        if in_progress:
+            for task in in_progress:
+                msg += f" - {task['id']}: {task['title']}\n"
+        else:
+            msg += " - None\n"
+
+        try:
+            user = await bot.fetch_user(int(discord_id))
+            if user:
+                view = StandupButtonsView(task_ids, discord_username)
+                await user.send(msg, view=view)
+                print(f"[STANDUP BOT] ✅ Sent standup DM to {discord_username}")
+                sys.stdout.flush()
+            else:
+                print(f"[STANDUP BOT] ❌ Could not fetch discord user {discord_id}")
+                sys.stdout.flush()
+        except Exception as e:
+            print(f"[STANDUP BOT] ❌ Error sending DM to {discord_username}: {e}")
+            sys.stdout.flush()
+
+
+@tasks.loop(seconds=60)
+async def standup_scheduler():
+    now = datetime.now()
+    if now.hour == 9 and now.minute == 0:
+        global last_standup_run_date
+        today_str = now.date().isoformat()
+        if last_standup_run_date != today_str:
+            last_standup_run_date = today_str
+            await run_daily_standup()
 
 # =====================================================================
 # Shared Infrastructure Helpers
@@ -1244,6 +1571,10 @@ async def github_callback(code: str, state: str = None):
             repo_full_name=repo,
             webhook_result=webhook_result
         )
+        save_unified_user_profile(
+            github_username=github_username,
+            github_access_token=access_token
+        )
 
     return {
         "message": "GitHub connected successfully",
@@ -1385,17 +1716,27 @@ async def discord_callback(code: str):
         access_token=access_token,
         email=email
     )
+    save_unified_user_profile(
+        discord_id=discord_id,
+        discord_username=discord_username,
+        discord_access_token=access_token,
+        email=email
+    )
 
     return {
-        "message": "Discord login successful",
-        "user": {
-            "discord_id": discord_id,
-            "discord_username": discord_username,
-            "email": email,
-            "avatar": avatar_url
-        }
+    "message": "Discord login successful",
+    "user": {
+        "discord_id": discord_id,
+        "discord_username": discord_username,
+        "email": email,
+        "avatar": avatar_url
+    },
+    "next_step": {
+        "action": "Add Orchestra Bot to your Discord server",
+        "bot_invite_url": f"https://discord.com/oauth2/authorize?client_id={DISCORD_CLIENT_ID}&permissions=84992&scope=bot",
+        "instructions": "Open the bot_invite_url and select your team's Discord server to add Orchestra Bot"
     }
-
+}
 
 # =====================================================================
 # Route — View Discord Connected Users
@@ -1435,6 +1776,50 @@ async def get_discord_users():
     formatted = json.dumps(result, indent=4)
     return Response(content=formatted, media_type="application/json")
 
+# =====================================================================
+# Route — View Unified User Profiles
+# =====================================================================
+# GET /users
+# Shows all users with their connected platforms.
+# This is the master identity record.
+# Member 6 uses this to show which platforms each user has connected.
+# =====================================================================
+@app.get("/users")
+async def get_users():
+    from fastapi.responses import Response
+
+    filepath = "user_profiles.json"
+    if not os.path.exists(filepath):
+        return {"total": 0, "users": []}
+
+    with open(filepath, "r") as f:
+        profiles = json.load(f)
+
+    # Hide access tokens from response
+    safe_profiles = []
+    for user_id, data in profiles.items():
+        safe_profiles.append({
+            "user_id": data.get("user_id"),
+            "email": data.get("email"),
+            "github_username": data.get("github_username"),
+            "discord_username": data.get("discord_username"),
+            "discord_id": data.get("discord_id"),
+            "platforms_connected": [
+                p for p in ["github", "discord"]
+                if data.get(f"{p}_username") or data.get(f"{p}_id")
+            ],
+            "created_at": data.get("created_at"),
+            "updated_at": data.get("updated_at")
+        })
+
+    result = {
+        "total": len(safe_profiles),
+        "users": safe_profiles
+    }
+
+    formatted = json.dumps(result, indent=4)
+    return Response(content=formatted, media_type="application/json")
+    
 # =====================================================================
 # Route — Discord Activity Summary
 # =====================================================================
@@ -1476,3 +1861,19 @@ async def get_discord_activity():
 
     formatted = json.dumps(result, indent=4)
     return Response(content=formatted, media_type="application/json")
+
+# =====================================================================
+# Route — Trigger Daily Standup Manually
+# =====================================================================
+# GET /test-daily-standup
+#
+# Triggers the daily standup logic instantly for testing.
+# Normally runs automatically at 9:00 AM.
+# =====================================================================
+@app.get("/test-daily-standup")
+async def test_daily_standup():
+    """
+    Manually triggers the daily standup routine in the background.
+    """
+    asyncio.create_task(run_daily_standup())
+    return {"status": "success", "message": "Daily standup triggered in background."}
