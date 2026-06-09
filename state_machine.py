@@ -38,6 +38,9 @@ class Task:
     updated_at: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
     pr_number: Optional[int] = None
     branch: Optional[str] = None
+    project_id: Optional[str] = None
+    order: Optional[int] = None
+    depends_on: list = field(default_factory=list)
     history: list = field(default_factory=list)
     confirmed: bool = False
 
@@ -71,6 +74,9 @@ class Task:
             "title": self.title,
             "status": self.state.value.lower() if self.state != TaskState.PENDING else "todo",
             "assigned_to": self.assigned_to,
+            "project_id": self.project_id,
+            "order": self.order,
+            "depends_on": self.depends_on,
             "created_at": self.created_at,
             "updated_at": self.updated_at,
             "pr_number": self.pr_number,
@@ -93,6 +99,9 @@ class Task:
             title=d["title"],
             state=state,
             assigned_to=d.get("assigned_to"),
+            project_id=d.get("project_id"),
+            order=d.get("order"),
+            depends_on=d.get("depends_on", []),
             created_at=d.get("created_at", ""),
             updated_at=d.get("updated_at", ""),
             pr_number=d.get("pr_number"),
