@@ -21,3 +21,14 @@ events.json
 tasks.json
 
 week5_files/
+
+# Sensitive data / access tokens
+user_profiles.json
+discord_activity.json
+connected_users.json
+discord_users.json
+*.db
+*.sqlite3
+
+# Documents
+Database Issues in Orchestra.pdf

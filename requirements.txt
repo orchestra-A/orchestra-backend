@@ -29,3 +29,6 @@ uvicorn==0.39.0
 websockets==15.0.1
 yarl==1.22.0
 apscheduler==3.10.4
+
+sqlalchemy==2.0.30
+psycopg2-binary==2.9.9
