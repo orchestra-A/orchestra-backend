@@ -1324,14 +1324,37 @@ async def receive_figma(request: Request):
 @app.get("/tasks")
 async def get_tasks():
     from fastapi import Response
-    filepath = "tasks.json"
-    if not os.path.exists(filepath):
-        initialize_tasks_file()
-    with open(filepath, "r") as f:
-        data = json.load(f)
-    
-    formatted_json = json.dumps(data, indent=4)
-    return Response(content=formatted_json, media_type="application/json")
+    from database import SessionLocal
+    from models_sql import TaskTable
+    db = SessionLocal()
+    try:
+        db_tasks = db.query(TaskTable).all()
+        tasks = []
+        for t in db_tasks:
+            tasks.append({
+                "id": t.id,
+                "title": t.title,
+                "status": t.state.lower() if t.state else "todo",
+                "assigned_to": t.assigned_to,
+                "project_id": t.project_id,
+                "order": t.order,
+                "depends_on": t.depends_on,
+                "created_at": t.created_at,
+                "updated_at": t.updated_at,
+                "pr_number": t.pr_number,
+                "branch": t.branch,
+                "history": t.history
+            })
+        result = {"total": len(tasks), "tasks": tasks}
+        formatted_json = json.dumps(result, indent=4)
+        return Response(content=formatted_json, media_type="application/json")
+    finally:
+        db.close()
+
+# TODO: Member 2 (Neo4j Team) - Hook this /graph endpoint up to the Neo4j database!
+@app.get("/graph")
+async def get_graph():
+    return {"nodes": [], "edges": []}
 
 # =====================================================================
 # Route 7.1 — Live Tasks Endpoint (Member 2's API)
@@ -1439,20 +1462,32 @@ async def manually_update_task_state(task_id: str, request: Request):
 @app.get("/events")
 async def get_events():
     from fastapi.responses import Response
-    filepath = "events.json"
-    if not os.path.exists(filepath):
-        return {"total": 0, "events": []}
-
-    with open(filepath, "r") as f:
-        events = json.load(f)
-
-    result = {
-        "total": len(events),
-        "events": events
-    }
-
-    formatted = json.dumps(result, indent=4)
-    return Response(content=formatted, media_type="application/json")
+    from database import SessionLocal
+    from models_sql import EventTable
+    db = SessionLocal()
+    try:
+        db_events = db.query(EventTable).all()
+        events = []
+        for e in db_events:
+            events.append({
+                "id": e.id,
+                "platform": e.platform,
+                "event_type": e.event_type,
+                "actor": e.actor,
+                "timestamp": e.timestamp,
+                "repo": e.repo,
+                "channel": e.channel,
+                "action_summary": e.action_summary,
+                "raw_metadata": e.raw_metadata
+            })
+        result = {
+            "total": len(events),
+            "events": events
+        }
+        formatted = json.dumps(result, indent=4)
+        return Response(content=formatted, media_type="application/json")
+    finally:
+        db.close()
 # =====================================================================
 # Route 9 — WebSocket Live Connection
 # =====================================================================
