@@ -22,7 +22,7 @@ class TaskTable(Base):
     project_id = Column(String, nullable=True, index=True)
     order = Column(Integer, nullable=True)
     created_at = Column(String)
-    updated_at = Column(String)
+
     pr_number = Column(Integer, nullable=True)
     branch = Column(String, nullable=True)
     

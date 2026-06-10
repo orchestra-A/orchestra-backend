@@ -557,8 +557,7 @@ def initialize_tasks_file():
                     "assigned_to": "Member 6",
                     "platform": "figma",
                     "priority": "high",
-                    "created_at": "2025-06-02T08:00:00Z",
-                    "updated_at": "2025-06-02T12:00:00Z"
+                    "created_at": "2025-06-02T11:00:00Z"
                 },
                 {
                     "id": "task_010",
@@ -570,8 +569,7 @@ def initialize_tasks_file():
                     "assigned_to": "Member 1",
                     "platform": "discord",
                     "priority": "medium",
-                    "created_at": "2025-06-02T09:00:00Z",
-                    "updated_at": "2025-06-02T09:00:00Z"
+                    "created_at": "2025-06-02T08:00:00Z"
                 },
                 {
                     "id": "task_011",
@@ -583,8 +581,7 @@ def initialize_tasks_file():
                     "assigned_to": "Member 5",
                     "platform": "github",
                     "priority": "high",
-                    "created_at": "2025-06-03T10:00:00Z",
-                    "updated_at": "2025-06-03T10:00:00Z"
+                    "created_at": "2025-06-03T09:00:00Z"
                 },
                 {
                     "id": "task_012",
@@ -596,8 +593,7 @@ def initialize_tasks_file():
                     "assigned_to": "Member 4",
                     "platform": "figma",
                     "priority": "medium",
-                    "created_at": "2025-06-04T11:00:00Z",
-                    "updated_at": "2025-06-04T11:00:00Z"
+                    "created_at": "2025-06-04T10:00:00Z"
                 }
             ]
         }
@@ -875,7 +871,8 @@ def get_user_standup_data(member_username: str):
         if is_assigned or is_recent_activity:
             status = task.get("status", "").lower()
             if status == "completed":
-                updated_at_str = task.get("updated_at")
+                history = task.get("history", [])
+                updated_at_str = history[-1].get("timestamp") if history else task.get("created_at")
                 is_completed_yesterday = False
                 if updated_at_str:
                     try:
@@ -1087,7 +1084,6 @@ def update_task_status(task_ref: str, new_status: str) -> bool:
         if task["id"] == full_task_id:
             old_status = task["status"]
             task["status"] = new_status
-            task["updated_at"] = datetime.now(timezone.utc).isoformat()
             
             if "history" not in task:
                 task["history"] = []
@@ -1098,7 +1094,7 @@ def update_task_status(task_ref: str, new_status: str) -> bool:
                 "to": new_status,
                 "actor": "manual_update",
                 "message": f"Status manually updated to {new_status}",
-                "timestamp": task["updated_at"]
+                "timestamp": datetime.now(timezone.utc).isoformat()
             })
 
             with open(filepath, "w") as f:
@@ -1353,7 +1349,6 @@ async def get_tasks():
                 "order": t.order,
                 "depends_on": t.depends_on,
                 "created_at": t.created_at,
-                "updated_at": t.updated_at,
                 "pr_number": t.pr_number,
                 "branch": t.branch,
                 "history": t.history
@@ -1434,8 +1429,7 @@ async def create_new_task(request: Request):
         "id": task_id,
         "title": title,
         "status": "todo",
-        "created_at": datetime.now(timezone.utc).isoformat(),
-        "updated_at": datetime.now(timezone.utc).isoformat()
+        "created_at": datetime.now(timezone.utc).isoformat()
     }
     data["tasks"].append(new_task)
     data["total"] = len(data["tasks"])
@@ -1499,7 +1493,6 @@ async def add_task_history_update(task_id: str, request: Request):
                 "timestamp": datetime.now(timezone.utc).isoformat()
             }
             task["history"].append(update_entry)
-            task["updated_at"] = update_entry["timestamp"]
             
             with open(filepath, "w") as f:
                 json.dump(data, f, indent=2)

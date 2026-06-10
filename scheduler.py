@@ -115,10 +115,14 @@ async def stale_task_check_job():
 
     tasks = load_tasks()
     cutoff = (datetime.now(timezone.utc) - timedelta(hours=24)).isoformat()
-    stale = [
-        t for t in tasks.values()
-        if t.state == TaskState.IN_PROGRESS and t.updated_at < cutoff
-    ]
+    stale = []
+    for t in tasks.values():
+        if t.state == TaskState.IN_PROGRESS:
+            last_updated = t.history[-1]["timestamp"] if t.history else t.created_at
+            if last_updated < cutoff:
+                # Attach the stuck time temporarily for the broadcast
+                t._stuck_since = last_updated
+                stale.append(t)
 
     if not stale:
         return
@@ -135,7 +139,7 @@ async def stale_task_check_job():
                 "task_id": task.id,
                 "task_title": task.title,
                 "assigned_to": task.assigned_to,
-                "stuck_since": task.updated_at,
+                "stuck_since": getattr(task, '_stuck_since', task.created_at),
             },
             "type": "new_event"
         }

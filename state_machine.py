@@ -35,7 +35,6 @@ class Task:
     state: TaskState = TaskState.PENDING
     assigned_to: Optional[str] = None
     created_at: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
-    updated_at: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
     pr_number: Optional[int] = None
     branch: Optional[str] = None
     project_id: Optional[str] = None
@@ -57,14 +56,14 @@ class Task:
         old_state = self.state
         self.state = new_state
         self.assigned_to = actor
-        self.updated_at = datetime.now(timezone.utc).isoformat()
+        timestamp = datetime.now(timezone.utc).isoformat()
         self.history.append({
             "type": "STATUS_CHANGE",
             "from": old_state,
             "to": new_state,
             "actor": actor,
             "message": reason,
-            "timestamp": self.updated_at,
+            "timestamp": timestamp,
         })
         print(f"[STATE MACHINE] ✅ {self.id}: {old_state} → {new_state} (by {actor})")
         return True
@@ -79,7 +78,6 @@ class Task:
             "order": self.order,
             "depends_on": self.depends_on,
             "created_at": self.created_at,
-            "updated_at": self.updated_at,
             "pr_number": self.pr_number,
             "branch": self.branch,
             "history": self.history,
@@ -104,7 +102,6 @@ class Task:
             order=d.get("order"),
             depends_on=d.get("depends_on", []),
             created_at=d.get("created_at", ""),
-            updated_at=d.get("updated_at", ""),
             pr_number=d.get("pr_number"),
             branch=d.get("branch"),
             history=d.get("history", []),
@@ -148,7 +145,6 @@ def load_tasks() -> dict[str, Task]:
                 "order": dt.order,
                 "depends_on": dt.depends_on,
                 "created_at": dt.created_at,
-                "updated_at": dt.updated_at,
                 "pr_number": dt.pr_number,
                 "branch": dt.branch,
                 "history": dt.history
@@ -175,7 +171,6 @@ def save_tasks(tasks: dict[str, Task]) -> None:
             dt.order = d.get("order")
             dt.depends_on = d.get("depends_on", [])
             dt.created_at = d.get("created_at")
-            dt.updated_at = d.get("updated_at")
             dt.pr_number = d.get("pr_number")
             dt.branch = d.get("branch")
             dt.history = d.get("history", [])
