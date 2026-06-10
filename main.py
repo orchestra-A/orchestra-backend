@@ -1088,6 +1088,18 @@ def update_task_status(task_ref: str, new_status: str) -> bool:
             old_status = task["status"]
             task["status"] = new_status
             task["updated_at"] = datetime.now(timezone.utc).isoformat()
+            
+            if "history" not in task:
+                task["history"] = []
+                
+            task["history"].append({
+                "type": "STATUS_CHANGE",
+                "from": old_status,
+                "to": new_status,
+                "actor": "manual_update",
+                "message": f"Status manually updated to {new_status}",
+                "timestamp": task["updated_at"]
+            })
 
             with open(filepath, "w") as f:
                 json.dump(data, f, indent=2)
@@ -1459,7 +1471,51 @@ async def manually_update_task_state(task_id: str, request: Request):
     if success:
         return {"status": "success", "message": f"Updated {task_id} to {new_state}"}
     return {"error": "Task not found"}
-
+@app.post("/tasks/{task_id}/history")
+async def add_task_history_update(task_id: str, request: Request):
+    body = await request.json()
+    message = body.get("message")
+    actor = body.get("actor", "unknown")
+    
+    if not message:
+        return {"error": "'message' field required"}
+        
+    filepath = "tasks.json"
+    if not os.path.exists(filepath):
+        return {"error": "tasks.json not found"}
+        
+    with open(filepath, "r") as f:
+        data = json.load(f)
+        
+    for task in data.get("tasks", []):
+        if task["id"] == task_id:
+            if "history" not in task:
+                task["history"] = []
+                
+            update_entry = {
+                "type": "UPDATE",
+                "message": message,
+                "actor": actor,
+                "timestamp": datetime.now(timezone.utc).isoformat()
+            }
+            task["history"].append(update_entry)
+            task["updated_at"] = update_entry["timestamp"]
+            
+            with open(filepath, "w") as f:
+                json.dump(data, f, indent=2)
+                
+            try:
+                asyncio.create_task(manager.broadcast({
+                    "type": "task_history_updated",
+                    "task_id": task_id,
+                    "update": update_entry
+                }))
+            except Exception:
+                pass
+                
+            return {"status": "success", "history_entry": update_entry}
+            
+    return {"error": "Task not found"}
 
 
 # =====================================================================

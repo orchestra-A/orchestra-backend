@@ -59,10 +59,11 @@ class Task:
         self.assigned_to = actor
         self.updated_at = datetime.now(timezone.utc).isoformat()
         self.history.append({
+            "type": "STATUS_CHANGE",
             "from": old_state,
             "to": new_state,
             "actor": actor,
-            "reason": reason,
+            "message": reason,
             "timestamp": self.updated_at,
         })
         print(f"[STATE MACHINE] ✅ {self.id}: {old_state} → {new_state} (by {actor})")
