@@ -24,3 +24,5 @@ def get_db():
         yield db
     finally:
         db.close()
+
+# Trigger Render redeploy for DB connection verification
