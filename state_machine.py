@@ -128,24 +128,59 @@ TRANSITIONS: dict[TaskState, list[TaskState]] = {
 # Task store (file-backed for Week 3)
 # ─────────────────────────────────────────────
 
-def load_tasks() -> dict[str, Task]:
-    try:
-        with open(TASKS_FILE) as f:
-            raw = json.load(f)
-        tasks_list = raw.get("tasks", [])
-        return {t["id"]: Task.from_dict(t) for t in tasks_list}
-    except (FileNotFoundError, json.JSONDecodeError):
-        return {}
+from database import SessionLocal
+from models_sql import TaskTable
 
+def load_tasks() -> dict[str, Task]:
+    db = SessionLocal()
+    try:
+        db_tasks = db.query(TaskTable).all()
+        tasks_dict = {}
+        for dt in db_tasks:
+            # Map SQL attributes to dict so from_dict still works
+            d = {
+                "id": dt.id,
+                "title": dt.title,
+                "status": dt.state.lower() if dt.state else "todo",
+                "assigned_to": dt.assigned_to,
+                "project_id": dt.project_id,
+                "order": dt.order,
+                "depends_on": dt.depends_on,
+                "created_at": dt.created_at,
+                "updated_at": dt.updated_at,
+                "pr_number": dt.pr_number,
+                "branch": dt.branch,
+                "history": dt.history
+            }
+            tasks_dict[dt.id] = Task.from_dict(d)
+        return tasks_dict
+    finally:
+        db.close()
 
 def save_tasks(tasks: dict[str, Task]) -> None:
-    tasks_list = [v.to_dict() for v in tasks.values()]
-    output = {
-        "total": len(tasks_list),
-        "tasks": tasks_list
-    }
-    with open(TASKS_FILE, "w") as f:
-        json.dump(output, f, indent=2)
+    db = SessionLocal()
+    try:
+        for t_id, task_obj in tasks.items():
+            dt = db.query(TaskTable).filter(TaskTable.id == t_id).first()
+            if not dt:
+                dt = TaskTable(id=t_id)
+                db.add(dt)
+            
+            d = task_obj.to_dict()
+            dt.title = d.get("title")
+            dt.state = d.get("status", "pending").upper()
+            dt.assigned_to = d.get("assigned_to")
+            dt.project_id = d.get("project_id")
+            dt.order = d.get("order")
+            dt.depends_on = d.get("depends_on", [])
+            dt.created_at = d.get("created_at")
+            dt.updated_at = d.get("updated_at")
+            dt.pr_number = d.get("pr_number")
+            dt.branch = d.get("branch")
+            dt.history = d.get("history", [])
+        db.commit()
+    finally:
+        db.close()
 
 
 def get_task(task_id: str) -> Optional[Task]:
