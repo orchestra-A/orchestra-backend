@@ -11,6 +11,7 @@ import discord
 from discord.ext import tasks
 import hmac
 import hashlib
+import requests
 
 # Import Member 4's normalizer and models
 from normalizer import normalize_event
@@ -1354,7 +1355,12 @@ async def get_tasks():
 # TODO: Member 2 (Neo4j Team) - Hook this /graph endpoint up to the Neo4j database!
 @app.get("/graph")
 async def get_graph():
-    return {"nodes": [], "edges": []}
+    try:
+        response = requests.get("https://orchestra-ai-36zm.onrender.com/graph", timeout=30)
+        response.raise_for_status()
+        return response.json()
+    except Exception as exc:
+        return {"error": str(exc), "nodes": [], "edges": []}
 
 # =====================================================================
 # Route 7.1 — Live Tasks Endpoint (Member 2's API)
