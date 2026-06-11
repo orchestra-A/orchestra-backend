@@ -30,5 +30,3 @@ discord_users.json
 *.db
 *.sqlite3
 
-# Documents
-Database Issues in Orchestra.pdf
