@@ -19,7 +19,7 @@ Responsible for core server hosting, API endpoint routing, and receiving incomin
 Responsible for transforming raw, multi-platform events into a clean, uniform format.
 - Parses incoming JSON payloads and extracts crucial metadata (branch, commits, sender).
 - Routes messy data through the **Semantic Data Normalizer** (`normalizer.py`).
-- Appends standardized timeline blocks into local JSON storage (`events.json`), accessible via the `GET /events` endpoint.
+- Persists standardized timeline blocks into a live serverless PostgreSQL database (Neon) via SQLAlchemy, accessible via the `GET /events` endpoint.
 
 ---
 
@@ -38,8 +38,11 @@ pip install -r requirements.txt
 ### 2. Environment Setup
 Create a `.env` file in the root directory and add the following keys:
 ```
+DATABASE_URL=postgresql://user:password@endpoint/dbname
 GITHUB_WEBHOOK_SECRET=your_secret_here
-# DISCORD_TOKEN and FIGMA_WEBHOOK_SECRET to be added when available
+GITHUB_CLIENT_ID=your_client_id
+GITHUB_CLIENT_SECRET=your_client_secret
+# Discord & Figma variables will be added later
 ```
 
 ### 3. Running the Server
@@ -68,4 +71,4 @@ uvicorn main:app --reload --port 8000
 
 - **Week 1:** Complete (Infrastructure boilerplate & Webhooks).
 - **Week 2:** Complete (Data Pipeline Normalizer).
-- **Week 3:** In Progress (Task REST Endpoints & WebSocket Integration).
+- **Week 3:** Complete (Task REST Endpoints, WebSocket Integration, Background Schedulers, and PostgreSQL Migration).
