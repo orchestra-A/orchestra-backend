@@ -18,6 +18,7 @@ from models import NormalizedEvent
 # GitHub normalizers
 # ─────────────────────────────────────────────
 
+
 def _normalize_github_push(body: dict) -> NormalizedEvent:
     commits = body.get("commits", [])
     branch = body.get("ref", "").replace("refs/heads/", "")
@@ -30,9 +31,7 @@ def _normalize_github_push(body: dict) -> NormalizedEvent:
         actor=pusher,
         timestamp=datetime.now(timezone.utc).isoformat(),
         repo=body.get("repository", {}).get("full_name"),
-        action_summary=(
-            f"{pusher} pushed {len(commits)} commit(s) to {branch}"
-        ),
+        action_summary=(f"{pusher} pushed {len(commits)} commit(s) to {branch}"),
         raw_metadata={
             "branch": branch,
             "commit_count": len(commits),
@@ -105,7 +104,7 @@ def _normalize_github_release(body: dict) -> NormalizedEvent:
     release = body.get("release", {})
     action = body.get("action", "unknown")
     actor = body.get("sender", {}).get("login", "unknown")
-    
+
     tag_name = release.get("tag_name", "unknown")
     release_name = release.get("name", "unknown")
 
@@ -130,6 +129,7 @@ def _normalize_github_release(body: dict) -> NormalizedEvent:
 # Discord normalizer (stub — Member 3 provides real payload shape)
 # ─────────────────────────────────────────────
 
+
 def _normalize_discord_message(body: dict) -> NormalizedEvent:
     """
     TODO: Member 3 sets up the Discord bot and will clarify the exact
@@ -139,13 +139,13 @@ def _normalize_discord_message(body: dict) -> NormalizedEvent:
     """
     # Handle both cases:
     # Case 1 — author is a dict: {"username": "mohit"} (raw Discord API format)
-    # Case 2 — author is a plain string: "Mohit"  
+    # Case 2 — author is a plain string: "Mohit"
     author_field = body.get("author", "unknown")
     if isinstance(author_field, dict):
         author = author_field.get("username", "unknown")
     else:
         author = str(author_field) if author_field else "unknown"
-    
+
     content = body.get("content", "")
     channel_id = str(body.get("channel_id", body.get("channel", "unknown")))
     timestamp = body.get("timestamp") or datetime.now(timezone.utc).isoformat()
@@ -176,6 +176,7 @@ def _normalize_discord_message(body: dict) -> NormalizedEvent:
 # Figma normalizer
 # ─────────────────────────────────────────────
 
+
 def _normalize_figma_event(body: dict) -> NormalizedEvent:
     """
     Normalizes a Figma webhook payload.
@@ -199,6 +200,7 @@ def _normalize_figma_event(body: dict) -> NormalizedEvent:
 # ─────────────────────────────────────────────
 # Fallback for unknown platforms
 # ─────────────────────────────────────────────
+
 
 def _normalize_unknown(event_type: str, body: dict) -> NormalizedEvent:
     return NormalizedEvent(
