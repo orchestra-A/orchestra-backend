@@ -14,7 +14,6 @@ Tests:
   8. GET /events integration test (needs server running)
 """
 
-import json
 import sys
 from normalizer import normalize_event
 from models import NormalizedEvent
@@ -32,9 +31,9 @@ def check(test_name: str, condition: bool, detail: str = ""):
 
 
 def section(title: str):
-    print(f"\n{'-'*50}")
+    print(f"\n{'-' * 50}")
     print(f"  {title}")
-    print(f"{'-'*50}")
+    print(f"{'-' * 50}")
 
 
 # ─────────────────────────────────────────────
@@ -50,7 +49,7 @@ push_payload = {
         {"id": "abc1234567", "message": "Fix webhook parser"},
         {"id": "def8901234", "message": "Add normalizer module"},
     ],
-    "compare": "https://github.com/team/orchestra/compare/abc..def"
+    "compare": "https://github.com/team/orchestra/compare/abc..def",
 }
 
 event = normalize_event("push", push_payload)
@@ -62,7 +61,9 @@ check("Repo extracted", event.repo == "team/orchestra")
 check("Summary mentions commit count", "2 commit(s)" in event.action_summary)
 check("Branch in summary", "main" in event.action_summary)
 check("Commits in metadata", len(event.raw_metadata["commits"]) == 2)
-check("Commit IDs shortened to 7 chars", len(event.raw_metadata["commits"][0]["id"]) == 7)
+check(
+    "Commit IDs shortened to 7 chars", len(event.raw_metadata["commits"][0]["id"]) == 7
+)
 check("Has unique ID", bool(event.id))
 check("Has timestamp", bool(event.timestamp))
 print(f"\n  -> Summary: {event.action_summary}")
@@ -82,9 +83,9 @@ pr_payload = {
         "base": {"ref": "main"},
         "head": {"ref": "feature/normalizer"},
         "merged": False,
-        "html_url": "https://github.com/team/orchestra/pull/42"
+        "html_url": "https://github.com/team/orchestra/pull/42",
     },
-    "repository": {"full_name": "team/orchestra"}
+    "repository": {"full_name": "team/orchestra"},
 }
 
 event = normalize_event("pull_request", pr_payload)
@@ -112,9 +113,9 @@ pr_merged_payload = {
         "base": {"ref": "main"},
         "head": {"ref": "feature/normalizer"},
         "merged": True,
-        "html_url": "https://github.com/team/orchestra/pull/42"
+        "html_url": "https://github.com/team/orchestra/pull/42",
     },
-    "repository": {"full_name": "team/orchestra"}
+    "repository": {"full_name": "team/orchestra"},
 }
 
 event = normalize_event("pull_request", pr_merged_payload)
@@ -134,10 +135,10 @@ issue_payload = {
         "number": 7,
         "title": "Normalizer crashes on empty body",
         "state": "open",
-        "html_url": "https://github.com/team/orchestra/issues/7"
+        "html_url": "https://github.com/team/orchestra/issues/7",
     },
     "sender": {"login": "arnav"},
-    "repository": {"full_name": "team/orchestra"}
+    "repository": {"full_name": "team/orchestra"},
 }
 
 event = normalize_event("issues", issue_payload)
@@ -158,10 +159,10 @@ release_payload = {
     "release": {
         "tag_name": "v1.0.0",
         "name": "First Release",
-        "html_url": "https://github.com/team/orchestra/releases/tag/v1.0.0"
+        "html_url": "https://github.com/team/orchestra/releases/tag/v1.0.0",
     },
     "sender": {"login": "arnav"},
-    "repository": {"full_name": "team/orchestra"}
+    "repository": {"full_name": "team/orchestra"},
 }
 
 event = normalize_event("release", release_payload)
@@ -184,11 +185,8 @@ discord_payload = {
     "channel_id": "987654321",
     "guild_id": "111222333",
     "timestamp": "2026-05-20T12:00:00.000Z",
-    "author": {
-        "username": "arnav_dev",
-        "id": "444555666"
-    },
-    "mentions": []
+    "author": {"username": "arnav_dev", "id": "444555666"},
+    "mentions": [],
 }
 
 event = normalize_event("discord_message", discord_payload)
@@ -197,7 +195,10 @@ check("Event type is message", event.event_type == "message")
 check("Actor extracted", event.actor == "arnav_dev")
 check("Channel extracted", event.channel == "987654321")
 check("Content in metadata", "normalizer" in event.raw_metadata["content"])
-check("Long message truncated in summary", "..." in event.action_summary or len(event.action_summary) < 120)
+check(
+    "Long message truncated in summary",
+    "..." in event.action_summary or len(event.action_summary) < 120,
+)
 check("Guild_id preserved", event.raw_metadata["guild_id"] == "111222333")
 print(f"\n  -> Summary: {event.action_summary}")
 
@@ -212,9 +213,7 @@ figma_payload = {
     "passcode": "my_secret_passcode",
     "file_name": "Orchestra Dashboard UI",
     "timestamp": "2026-05-20T12:05:00Z",
-    "triggered_by": {
-        "handle": "designer_dave"
-    }
+    "triggered_by": {"handle": "designer_dave"},
 }
 
 event = normalize_event("figma", figma_payload)
@@ -288,12 +287,12 @@ total = len(results)
 passed = sum(results)
 failed = total - passed
 
-print(f"\n{'='*50}")
+print(f"\n{'=' * 50}")
 print(f"  Results: {passed}/{total} tests passed")
 if failed:
     print(f"  [WARNING] {failed} test(s) failed — check output above")
 else:
     print(f"  [SUCCESS] All tests passed — normalizer is solid!")
-print(f"{'='*50}\n")
+print(f"{'=' * 50}\n")
 
 sys.exit(0 if failed == 0 else 1)

@@ -20,6 +20,7 @@ scheduler = AsyncIOScheduler(timezone="UTC")
 # Job 1: Daily summary at 9:00 AM UTC
 # ─────────────────────────────────────────────
 
+
 async def daily_summary_job():
     """
     Reads all events from last 24 hours.
@@ -56,8 +57,8 @@ async def daily_summary_job():
     lines = []
     for actor, actor_events in by_actor.items():
         pushes = [e for e in actor_events if e.get("event_type") == "push"]
-        prs    = [e for e in actor_events if e.get("event_type") == "pull_request"]
-        msgs   = [e for e in actor_events if e.get("event_type") == "message"]
+        prs = [e for e in actor_events if e.get("event_type") == "pull_request"]
+        msgs = [e for e in actor_events if e.get("event_type") == "message"]
 
         parts = []
         if pushes:
@@ -83,27 +84,33 @@ async def daily_summary_job():
             "by_actor": {actor: len(evts) for actor, evts in by_actor.items()},
             "breakdown": lines,
         },
-        "type": "new_event"
+        "type": "new_event",
     }
 
     await manager.broadcast(summary)
-    print(f"[SCHEDULER] Daily summary sent — {len(recent)} events, {len(by_actor)} developers")
+    print(
+        f"[SCHEDULER] Daily summary sent — {len(recent)} events, {len(by_actor)} developers"
+    )
+
 
 # ─────────────────────────────────────────────
 # Job 2: Heartbeat every 30 seconds
 # ─────────────────────────────────────────────
 
+
 async def heartbeat_job():
     from main import manager
     from datetime import datetime, timezone
-    await manager.broadcast({
-        "type": "heartbeat",
-        "timestamp": datetime.now(timezone.utc).isoformat()
-    })
+
+    await manager.broadcast(
+        {"type": "heartbeat", "timestamp": datetime.now(timezone.utc).isoformat()}
+    )
+
 
 # ─────────────────────────────────────────────
 # Job 3: Stale task check every 60 minutes
 # ─────────────────────────────────────────────
+
 
 async def stale_task_check_job():
     """
@@ -139,16 +146,20 @@ async def stale_task_check_job():
                 "task_id": task.id,
                 "task_title": task.title,
                 "assigned_to": task.assigned_to,
-                "stuck_since": getattr(task, '_stuck_since', task.created_at),
+                "stuck_since": getattr(task, "_stuck_since", task.created_at),
             },
-            "type": "new_event"
+            "type": "new_event",
         }
         await manager.broadcast(warning)
-        print(f"[SCHEDULER] Stale task alert: {task.id} (assigned to {task.assigned_to})")
+        print(
+            f"[SCHEDULER] Stale task alert: {task.id} (assigned to {task.assigned_to})"
+        )
+
 
 # ─────────────────────────────────────────────
 # Start / Stop
 # ─────────────────────────────────────────────
+
 
 def start_scheduler():
     scheduler.add_job(
@@ -171,6 +182,7 @@ def start_scheduler():
     )
     scheduler.start()
     print("[SCHEDULER] Started — daily_summary, heartbeat, stale_task_check")
+
 
 def stop_scheduler():
     scheduler.shutdown()

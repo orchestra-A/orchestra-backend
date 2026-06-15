@@ -15,8 +15,6 @@ from enum import Enum
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Optional
-import json
-import os
 
 TASKS_FILE = "tasks.json"
 
@@ -34,7 +32,9 @@ class Task:
     title: str
     state: TaskState = TaskState.PENDING
     assigned_to: Optional[str] = None
-    created_at: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
+    created_at: str = field(
+        default_factory=lambda: datetime.now(timezone.utc).isoformat()
+    )
     pr_number: Optional[int] = None
     branch: Optional[str] = None
     project_id: Optional[str] = None
@@ -50,21 +50,25 @@ class Task:
         """
         allowed = TRANSITIONS.get(self.state, [])
         if new_state not in allowed:
-            print(f"[STATE MACHINE] ❌ {self.id}: {self.state} → {new_state} NOT allowed")
+            print(
+                f"[STATE MACHINE] ❌ {self.id}: {self.state} → {new_state} NOT allowed"
+            )
             return False
 
         old_state = self.state
         self.state = new_state
         self.assigned_to = actor
         timestamp = datetime.now(timezone.utc).isoformat()
-        self.history.append({
-            "type": "STATUS_CHANGE",
-            "from": old_state,
-            "to": new_state,
-            "actor": actor,
-            "message": reason,
-            "timestamp": timestamp,
-        })
+        self.history.append(
+            {
+                "type": "STATUS_CHANGE",
+                "from": old_state,
+                "to": new_state,
+                "actor": actor,
+                "message": reason,
+                "timestamp": timestamp,
+            }
+        )
         print(f"[STATE MACHINE] ✅ {self.id}: {old_state} → {new_state} (by {actor})")
         return True
 
@@ -72,7 +76,9 @@ class Task:
         return {
             "id": self.id,
             "title": self.title,
-            "status": self.state.value.lower() if self.state != TaskState.PENDING else "todo",
+            "status": self.state.value.lower()
+            if self.state != TaskState.PENDING
+            else "todo",
             "assigned_to": self.assigned_to,
             "project_id": self.project_id,
             "order": self.order,
@@ -115,10 +121,10 @@ class Task:
 # ─────────────────────────────────────────────
 
 TRANSITIONS: dict[TaskState, list[TaskState]] = {
-    TaskState.PENDING:      [TaskState.IN_PROGRESS, TaskState.BLOCKED],
-    TaskState.IN_PROGRESS:  [TaskState.COMPLETED, TaskState.BLOCKED, TaskState.PENDING],
-    TaskState.BLOCKED:      [TaskState.PENDING, TaskState.IN_PROGRESS],
-    TaskState.COMPLETED:    [],  # Terminal state — no going back
+    TaskState.PENDING: [TaskState.IN_PROGRESS, TaskState.BLOCKED],
+    TaskState.IN_PROGRESS: [TaskState.COMPLETED, TaskState.BLOCKED, TaskState.PENDING],
+    TaskState.BLOCKED: [TaskState.PENDING, TaskState.IN_PROGRESS],
+    TaskState.COMPLETED: [],  # Terminal state — no going back
 }
 
 
@@ -128,6 +134,7 @@ TRANSITIONS: dict[TaskState, list[TaskState]] = {
 
 from database import SessionLocal
 from models_sql import TaskTable
+
 
 def load_tasks() -> dict[str, Task]:
     db = SessionLocal()
@@ -147,12 +154,13 @@ def load_tasks() -> dict[str, Task]:
                 "created_at": dt.created_at,
                 "pr_number": dt.pr_number,
                 "branch": dt.branch,
-                "history": dt.history
+                "history": dt.history,
             }
             tasks_dict[dt.id] = Task.from_dict(d)
         return tasks_dict
     finally:
         db.close()
+
 
 def save_tasks(tasks: dict[str, Task]) -> None:
     db = SessionLocal()
@@ -162,7 +170,7 @@ def save_tasks(tasks: dict[str, Task]) -> None:
             if not dt:
                 dt = TaskTable(id=t_id)
                 db.add(dt)
-            
+
             d = task_obj.to_dict()
             dt.title = d.get("title")
             dt.state = d.get("status", "pending").upper()
@@ -199,6 +207,7 @@ def create_task(task_id: str, title: str) -> Task:
 # GitHub event → state machine triggers
 # ─────────────────────────────────────────────
 
+
 def extract_task_id_from_branch(branch: str) -> Optional[str]:
     """
     Extracts task ID from branch name.
@@ -208,6 +217,7 @@ def extract_task_id_from_branch(branch: str) -> Optional[str]:
       "main"             → None
     """
     import re
+
     match = re.search(r"task-(\d+)", branch, re.IGNORECASE)
     if match:
         return f"task-{match.group(1)}"
@@ -223,6 +233,7 @@ def extract_task_id_from_pr_title(title: str) -> Optional[str]:
       "Random PR title"                 → None
     """
     import re
+
     match = re.search(r"task-(\d+)", title, re.IGNORECASE)
     if match:
         return f"task-{match.group(1)}"
@@ -261,11 +272,12 @@ async def handle_push_event(event: dict) -> Optional[dict]:
     if changed:
         upsert_task(task)
         task_dict = task.to_dict()
-        
+
         # Broadcast the update dynamically to avoid circular import
         from main import manager
+
         await manager.broadcast({"type": "task_update", **task_dict})
-        
+
         return task_dict
     return None
 
@@ -286,9 +298,8 @@ async def handle_pr_event(event: dict) -> Optional[dict]:
     merged = metadata.get("merged", False)
 
     # Try to extract task ID from PR title or branch
-    task_id = (
-        extract_task_id_from_pr_title(pr_title)
-        or extract_task_id_from_branch(metadata.get("head_branch", ""))
+    task_id = extract_task_id_from_pr_title(pr_title) or extract_task_id_from_branch(
+        metadata.get("head_branch", "")
     )
 
     if not task_id:
@@ -321,11 +332,12 @@ async def handle_pr_event(event: dict) -> Optional[dict]:
         if changed:
             upsert_task(task)
             task_dict = task.to_dict()
-            
+
             # Broadcast the update dynamically to avoid circular import
             from main import manager
+
             await manager.broadcast({"type": "task_update", **task_dict})
-            
+
             return task_dict
 
     return None

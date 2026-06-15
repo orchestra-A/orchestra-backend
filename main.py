@@ -26,7 +26,7 @@ from fastapi.middleware.cors import CORSMiddleware
 app = FastAPI(
     title="Timeline Orchestra Backend",
     description="Infrastructure layer for Timeline Orchestra",
-    version="0.7.0"
+    version="0.7.0",
 )
 
 app.add_middleware(
@@ -36,6 +36,7 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
 
 @app.on_event("startup")
 async def startup_event():
@@ -51,20 +52,24 @@ async def startup_event():
     sys.stdout.flush()
 
     from scheduler import start_scheduler
+
     start_scheduler()
     print("[STARTUP] WebSocket Cron Scheduler started")
     sys.stdout.flush()
 
+
 @app.on_event("shutdown")
 async def shutdown_event():
     from scheduler import stop_scheduler
+
     stop_scheduler()
     print("[SHUTDOWN] WebSocket Cron Scheduler stopped")
     sys.stdout.flush()
 
+
 # =====================================================================
 # Environment Variables
-# GitHub & Discord OAuth credentials — stored in .env file 
+# GitHub & Discord OAuth credentials — stored in .env file
 # =====================================================================
 GITHUB_CLIENT_ID = os.getenv("GITHUB_CLIENT_ID")
 GITHUB_CLIENT_SECRET = os.getenv("GITHUB_CLIENT_SECRET")
@@ -72,6 +77,8 @@ GITHUB_WEBHOOK_SECRET_KEY = os.getenv("GITHUB_WEBHOOK_SECRET_KEY", "default_secr
 DISCORD_CLIENT_ID = os.getenv("DISCORD_CLIENT_ID")
 DISCORD_CLIENT_SECRET = os.getenv("DISCORD_CLIENT_SECRET")
 DISCORD_BOT_TOKEN = os.getenv("DISCORD_BOT_TOKEN")
+
+
 # =====================================================================
 # WEBSOCKET CONNECTION MANAGER
 # =====================================================================
@@ -97,14 +104,18 @@ class ConnectionManager:
         # Add it to our active list
         await websocket.accept()
         self.active_connections.append(websocket)
-        print(f"[WEBSOCKET] ✅ New browser connected. Total connected: {len(self.active_connections)}")
+        print(
+            f"[WEBSOCKET] ✅ New browser connected. Total connected: {len(self.active_connections)}"
+        )
         sys.stdout.flush()
 
     def disconnect(self, websocket: WebSocket):
         # Browser closed the tab — remove from list
         if websocket in self.active_connections:
             self.active_connections.remove(websocket)
-        print(f"[WEBSOCKET] ❌ Browser disconnected. Total connected: {len(self.active_connections)}")
+        print(
+            f"[WEBSOCKET] ❌ Browser disconnected. Total connected: {len(self.active_connections)}"
+        )
         sys.stdout.flush()
 
     async def broadcast(self, message: dict):
@@ -123,7 +134,9 @@ class ConnectionManager:
         for connection in disconnected:
             self.active_connections.remove(connection)
 
-        print(f"[WEBSOCKET] 📡 Broadcast sent to {len(self.active_connections)} browser(s)")
+        print(
+            f"[WEBSOCKET] 📡 Broadcast sent to {len(self.active_connections)} browser(s)"
+        )
         print(f"[WEBSOCKET] Message: {message}")
         sys.stdout.flush()
 
@@ -143,6 +156,7 @@ manager = ConnectionManager()
 # GITHUB WEBHOOK AUTO-REGISTRATION HELPERS
 # =====================================================================
 
+
 def generate_user_webhook_secret(github_username: str) -> str:
     """
     Generates a unique webhook secret for each user.
@@ -160,16 +174,12 @@ def generate_user_webhook_secret(github_username: str) -> str:
     """
     combined = f"{GITHUB_WEBHOOK_SECRET_KEY}:{github_username}"
     return hmac.new(
-        GITHUB_WEBHOOK_SECRET_KEY.encode(),
-        combined.encode(),
-        hashlib.sha256
+        GITHUB_WEBHOOK_SECRET_KEY.encode(), combined.encode(), hashlib.sha256
     ).hexdigest()[:32]
 
 
 async def register_github_webhook(
-    access_token: str,
-    github_username: str,
-    repo_full_name: str
+    access_token: str, github_username: str, repo_full_name: str
 ) -> dict:
     """
     Automatically registers a webhook on the user's GitHub repo.
@@ -197,16 +207,16 @@ async def register_github_webhook(
         "name": "web",
         "active": True,
         "events": [
-            "push",           # Someone pushed code
-            "pull_request",   # PR opened, closed, merged
-            "issues"          # Issue created, closed, commented
+            "push",  # Someone pushed code
+            "pull_request",  # PR opened, closed, merged
+            "issues",  # Issue created, closed, commented
         ],
         "config": {
             "url": webhook_url,
             "content_type": "json",
             "secret": webhook_secret,
-            "insecure_ssl": "0"
-        }
+            "insecure_ssl": "0",
+        },
     }
 
     # Call GitHub API to create the webhook
@@ -217,8 +227,8 @@ async def register_github_webhook(
             headers={
                 "Authorization": f"Bearer {access_token}",
                 "Accept": "application/vnd.github+json",
-                "X-GitHub-Api-Version": "2022-11-28"
-            }
+                "X-GitHub-Api-Version": "2022-11-28",
+            },
         )
 
     if response.status_code == 201:
@@ -228,7 +238,7 @@ async def register_github_webhook(
             "success": True,
             "repo": repo_full_name,
             "webhook_id": response.json().get("id"),
-            "events": ["push", "pull_request", "issues"]
+            "events": ["push", "pull_request", "issues"],
         }
     elif response.status_code == 422:
         # 422 means webhook already exists on this repo
@@ -237,7 +247,7 @@ async def register_github_webhook(
         return {
             "success": True,
             "repo": repo_full_name,
-            "note": "Webhook already registered"
+            "note": "Webhook already registered",
         }
     else:
         print(f"[GITHUB] ❌ Failed to register webhook: {response.status_code}")
@@ -247,15 +257,12 @@ async def register_github_webhook(
             "success": False,
             "repo": repo_full_name,
             "error": response.text,
-            "status_code": response.status_code
+            "status_code": response.status_code,
         }
 
 
 def save_connected_user(
-    github_username: str,
-    access_token: str,
-    repo_full_name: str,
-    webhook_result: dict
+    github_username: str, access_token: str, repo_full_name: str, webhook_result: dict
 ) -> None:
     """
     Saves the connected user's information to connected_users.json.
@@ -278,7 +285,7 @@ def save_connected_user(
         "connected_at": datetime.now(timezone.utc).isoformat(),
         "webhook_registered": webhook_result.get("success", False),
         "webhook_id": webhook_result.get("webhook_id"),
-        "access_token": access_token  # In production this would be encrypted
+        "access_token": access_token,  # In production this would be encrypted
     }
 
     with open(filepath, "w") as f:
@@ -287,21 +294,19 @@ def save_connected_user(
     print(f"[USER] ✅ Saved connected user: {github_username}")
     sys.stdout.flush()
 
+
 def save_discord_user(
-    discord_id: str,
-    discord_username: str,
-    access_token: str,
-    email: str = None
+    discord_id: str, discord_username: str, access_token: str, email: str = None
 ) -> None:
     """
     Saves a Discord connected user to discord_users.json
-    
+
     When a user logs in with Discord, we save:
     - Their Discord ID (unique identifier)
     - Their username
     - Their access token (for sending them DMs later via bot)
     - Their email if they provided it
-    
+
     This file is what the bot uses in Step 4 (daily standup)
     to know who to send messages to.
     """
@@ -318,7 +323,7 @@ def save_discord_user(
         "discord_username": discord_username,
         "access_token": access_token,
         "email": email,
-        "connected_at": datetime.now(timezone.utc).isoformat()
+        "connected_at": datetime.now(timezone.utc).isoformat(),
     }
 
     with open(filepath, "w") as f:
@@ -327,28 +332,29 @@ def save_discord_user(
     print(f"[DISCORD AUTH] ✅ Saved Discord user: {discord_username}")
     sys.stdout.flush()
 
+
 def save_unified_user_profile(
     github_username: str = None,
     github_access_token: str = None,
     discord_id: str = None,
     discord_username: str = None,
     discord_access_token: str = None,
-    email: str = None
+    email: str = None,
 ) -> dict:
     """
     Creates or updates a unified user profile.
-    
+
     This is the central identity record for each user.
     Links their GitHub and Discord accounts together.
-    
+
     When someone signs up with GitHub:
     - Creates profile with github_username
     - discord fields are null until they connect Discord
-    
+
     When they later connect Discord:
     - Finds their existing profile by email or github_username
     - Adds their Discord identity to the same profile
-    
+
     This is how Orchestra knows:
     SarvyagyaPrakash (GitHub) = moonknight6006 (Discord)
     """
@@ -395,6 +401,7 @@ def save_unified_user_profile(
     else:
         # Create new profile
         import uuid
+
         user_id = f"usr_{str(uuid.uuid4())[:8]}"
         profiles[user_id] = {
             "user_id": user_id,
@@ -405,7 +412,7 @@ def save_unified_user_profile(
             "discord_username": discord_username,
             "discord_access_token": discord_access_token,
             "created_at": datetime.now(timezone.utc).isoformat(),
-            "updated_at": datetime.now(timezone.utc).isoformat()
+            "updated_at": datetime.now(timezone.utc).isoformat(),
         }
         print(f"[USER PROFILE] ✅ Created new profile: {user_id}")
 
@@ -414,6 +421,7 @@ def save_unified_user_profile(
 
     sys.stdout.flush()
     return profiles[user_id]
+
 
 def update_member_activity(actor: str, content: str, timestamp: str) -> None:
     """
@@ -439,7 +447,7 @@ def update_member_activity(actor: str, content: str, timestamp: str) -> None:
         "actor": actor,
         "latest_message": content,
         "last_seen": timestamp,
-        "message_count": activity.get(actor, {}).get("message_count", 0) + 1
+        "message_count": activity.get(actor, {}).get("message_count", 0) + 1,
     }
 
     with open(filepath, "w") as f:
@@ -447,6 +455,7 @@ def update_member_activity(actor: str, content: str, timestamp: str) -> None:
 
     print(f"[ACTIVITY] Updated activity for {actor}: {content[:40]}")
     sys.stdout.flush()
+
 
 def initialize_tasks_file():
     if not os.path.exists("tasks.json"):
@@ -464,7 +473,7 @@ def initialize_tasks_file():
                     "platform": "github",
                     "priority": "high",
                     "created_at": "2025-05-28T09:00:00Z",
-                    "updated_at": "2025-05-30T14:30:00Z"
+                    "updated_at": "2025-05-30T14:30:00Z",
                 },
                 {
                     "id": "task_002",
@@ -477,7 +486,7 @@ def initialize_tasks_file():
                     "platform": "github",
                     "priority": "high",
                     "created_at": "2025-05-28T09:00:00Z",
-                    "updated_at": "2025-06-01T10:00:00Z"
+                    "updated_at": "2025-06-01T10:00:00Z",
                 },
                 {
                     "id": "task_003",
@@ -490,7 +499,7 @@ def initialize_tasks_file():
                     "platform": "figma",
                     "priority": "medium",
                     "created_at": "2025-05-29T11:00:00Z",
-                    "updated_at": "2025-05-31T16:00:00Z"
+                    "updated_at": "2025-05-31T16:00:00Z",
                 },
                 {
                     "id": "task_004",
@@ -503,7 +512,7 @@ def initialize_tasks_file():
                     "platform": "figma",
                     "priority": "medium",
                     "created_at": "2025-05-29T11:00:00Z",
-                    "updated_at": "2025-06-01T09:00:00Z"
+                    "updated_at": "2025-06-01T09:00:00Z",
                 },
                 {
                     "id": "task_005",
@@ -516,7 +525,7 @@ def initialize_tasks_file():
                     "platform": "discord",
                     "priority": "high",
                     "created_at": "2025-06-01T08:00:00Z",
-                    "updated_at": "2025-06-01T12:00:00Z"
+                    "updated_at": "2025-06-01T12:00:00Z",
                 },
                 {
                     "id": "task_006",
@@ -529,7 +538,7 @@ def initialize_tasks_file():
                     "platform": "figma",
                     "priority": "high",
                     "created_at": "2025-06-01T08:00:00Z",
-                    "updated_at": "2025-06-01T12:00:00Z"
+                    "updated_at": "2025-06-01T12:00:00Z",
                 },
                 {
                     "id": "task_007",
@@ -542,7 +551,7 @@ def initialize_tasks_file():
                     "platform": "github",
                     "priority": "high",
                     "created_at": "2025-05-28T09:00:00Z",
-                    "updated_at": "2025-05-30T11:00:00Z"
+                    "updated_at": "2025-05-30T11:00:00Z",
                 },
                 {
                     "id": "task_008",
@@ -555,7 +564,7 @@ def initialize_tasks_file():
                     "platform": "github",
                     "priority": "high",
                     "created_at": "2025-06-01T08:00:00Z",
-                    "updated_at": "2025-06-01T08:00:00Z"
+                    "updated_at": "2025-06-01T08:00:00Z",
                 },
                 {
                     "id": "task_009",
@@ -567,7 +576,7 @@ def initialize_tasks_file():
                     "assigned_to": "Member 6",
                     "platform": "figma",
                     "priority": "high",
-                    "created_at": "2025-06-02T11:00:00Z"
+                    "created_at": "2025-06-02T11:00:00Z",
                 },
                 {
                     "id": "task_010",
@@ -579,7 +588,7 @@ def initialize_tasks_file():
                     "assigned_to": "Member 1",
                     "platform": "discord",
                     "priority": "medium",
-                    "created_at": "2025-06-02T08:00:00Z"
+                    "created_at": "2025-06-02T08:00:00Z",
                 },
                 {
                     "id": "task_011",
@@ -591,7 +600,7 @@ def initialize_tasks_file():
                     "assigned_to": "Member 5",
                     "platform": "github",
                     "priority": "high",
-                    "created_at": "2025-06-03T09:00:00Z"
+                    "created_at": "2025-06-03T09:00:00Z",
                 },
                 {
                     "id": "task_012",
@@ -603,21 +612,22 @@ def initialize_tasks_file():
                     "assigned_to": "Member 4",
                     "platform": "figma",
                     "priority": "medium",
-                    "created_at": "2025-06-04T10:00:00Z"
-                }
-            ]
+                    "created_at": "2025-06-04T10:00:00Z",
+                },
+            ],
         }
-        
+
         # --- NEW DEPENDENCY LOGIC ---
         from collections import defaultdict
+
         project_order_tasks = defaultdict(lambda: defaultdict(list))
-        
+
         for task in tasks_data["tasks"]:
             pid = task.get("project_id")
             order = task.get("order")
             if pid and order:
                 project_order_tasks[pid][order].append(task["id"])
-                
+
         for task in tasks_data["tasks"]:
             pid = task.get("project_id")
             order = task.get("order")
@@ -633,6 +643,7 @@ def initialize_tasks_file():
     else:
         print("[STARTUP] tasks.json already exists, skipping initialization")
         sys.stdout.flush()
+
 
 # Run on startup
 initialize_tasks_file()
@@ -656,10 +667,10 @@ initialize_tasks_file()
 # Set up Discord bot with all necessary permissions
 # intents = what the bot is allowed to do
 intents = discord.Intents.default()
-intents.message_content = True    # Can read message text
-intents.members = True            # Can see server members
-intents.guilds = True             # Can see servers it's in
-intents.messages = True           # Can receive message events
+intents.message_content = True  # Can read message text
+intents.members = True  # Can see server members
+intents.guilds = True  # Can see servers it's in
+intents.messages = True  # Can receive message events
 
 bot = discord.Client(intents=intents)
 
@@ -707,7 +718,9 @@ async def on_message(message):
     if not message.content:
         return
 
-    print(f"[DISCORD BOT] 📨 Message from {message.author.name}: {message.content[:50]}")
+    print(
+        f"[DISCORD BOT] 📨 Message from {message.author.name}: {message.content[:50]}"
+    )
     sys.stdout.flush()
 
     # Build payload in same format as /webhook/discord expects
@@ -721,7 +734,7 @@ async def on_message(message):
         "author_id": str(message.author.id),
         "guild_id": str(message.guild.id) if message.guild else None,
         "message_id": str(message.id),
-        "timestamp": message.created_at.isoformat()
+        "timestamp": message.created_at.isoformat(),
     }
 
     # Update member activity tracker
@@ -729,13 +742,14 @@ async def on_message(message):
     update_member_activity(
         actor=message.author.name,
         content=message.content,
-        timestamp=message.created_at.isoformat()
+        timestamp=message.created_at.isoformat(),
     )
 
     # Save as normalized event using existing pipeline
     # Same as if it came through /webhook/discord
     try:
         from normalizer import normalize_event
+
         normalized = normalize_event("discord_message", payload)
         save_normalized_event(normalized)
         print(f"[DISCORD BOT] ✅ Message normalized and saved")
@@ -765,11 +779,13 @@ async def start_discord_bot():
         print(f"[DISCORD BOT] ❌ Failed to start: {e}")
         sys.stdout.flush()
 
+
 # =====================================================================
 # DAILY STANDUP BOT
 # =====================================================================
 # State of the last standup run date (to avoid running multiple times in 9:00 AM minute)
 last_standup_run_date = ""
+
 
 class StandupButtonsView(discord.ui.View):
     def __init__(self, task_ids: list, member_name: str):
@@ -777,12 +793,18 @@ class StandupButtonsView(discord.ui.View):
         self.task_ids = task_ids
         self.member_name = member_name
 
-    @discord.ui.button(label="Confirm ⬜", style=discord.ButtonStyle.secondary, custom_id="standup_confirm")
-    async def confirm_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+    @discord.ui.button(
+        label="Confirm ⬜",
+        style=discord.ButtonStyle.secondary,
+        custom_id="standup_confirm",
+    )
+    async def confirm_button(
+        self, interaction: discord.Interaction, button: discord.ui.Button
+    ):
         button.label = "Confirm ✅"
         button.style = discord.ButtonStyle.success
         button.disabled = True
-        
+
         for child in self.children:
             if child.custom_id != "standup_confirm":
                 child.disabled = True
@@ -793,20 +815,33 @@ class StandupButtonsView(discord.ui.View):
 
         await interaction.response.edit_message(view=self)
         await confirm_standup_tasks(self.task_ids, self.member_name)
-        await interaction.followup.send("Daily standup confirmed! Tasks updated and broadcasted.", ephemeral=True)
+        await interaction.followup.send(
+            "Daily standup confirmed! Tasks updated and broadcasted.", ephemeral=True
+        )
 
-    @discord.ui.button(label="Edit ➡️⬜", style=discord.ButtonStyle.secondary, custom_id="standup_edit")
-    async def edit_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+    @discord.ui.button(
+        label="Edit ➡️⬜", style=discord.ButtonStyle.secondary, custom_id="standup_edit"
+    )
+    async def edit_button(
+        self, interaction: discord.Interaction, button: discord.ui.Button
+    ):
         button.label = "Edit ➡️ Selected"
         button.disabled = True
         for child in self.children:
             if child.custom_id != "standup_edit":
                 child.disabled = True
         await interaction.response.edit_message(view=self)
-        await interaction.followup.send("Standup edit selected. Please update your tasks on the Orchestra dashboard.", ephemeral=True)
+        await interaction.followup.send(
+            "Standup edit selected. Please update your tasks on the Orchestra dashboard.",
+            ephemeral=True,
+        )
 
-    @discord.ui.button(label="Skip ⬜⬜", style=discord.ButtonStyle.secondary, custom_id="standup_skip")
-    async def skip_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+    @discord.ui.button(
+        label="Skip ⬜⬜", style=discord.ButtonStyle.secondary, custom_id="standup_skip"
+    )
+    async def skip_button(
+        self, interaction: discord.Interaction, button: discord.ui.Button
+    ):
         button.label = "Skipped ❌"
         button.style = discord.ButtonStyle.danger
         button.disabled = True
@@ -853,14 +888,16 @@ def get_user_standup_data(member_username: str):
             for event in events:
                 event_time_str = event.get("timestamp")
                 if event_time_str:
-                    event_time = datetime.fromisoformat(event_time_str.replace('Z', '+00:00'))
+                    event_time = datetime.fromisoformat(
+                        event_time_str.replace("Z", "+00:00")
+                    )
                     if event_time >= yesterday:
                         if users_match(event.get("actor"), member_username):
                             summary = event.get("action_summary", "")
                             refs = extract_task_references(summary)
                             for ref in refs:
                                 recent_task_ids.add(f"task_{ref.zfill(3)}")
-                            
+
                             commits = event.get("raw_metadata", {}).get("commits", [])
                             for commit in commits:
                                 commit_msg = commit.get("message", "")
@@ -874,19 +911,23 @@ def get_user_standup_data(member_username: str):
     for task in tasks_data.get("tasks", []):
         task_id = task["id"]
         assigned = task.get("assigned_to")
-        
+
         is_assigned = users_match(assigned, member_username)
         is_recent_activity = task_id in recent_task_ids
-        
+
         if is_assigned or is_recent_activity:
             status = task.get("status", "").lower()
             if status == "completed":
                 history = task.get("history", [])
-                updated_at_str = history[-1].get("timestamp") if history else task.get("created_at")
+                updated_at_str = (
+                    history[-1].get("timestamp") if history else task.get("created_at")
+                )
                 is_completed_yesterday = False
                 if updated_at_str:
                     try:
-                        updated_at = datetime.fromisoformat(updated_at_str.replace('Z', '+00:00'))
+                        updated_at = datetime.fromisoformat(
+                            updated_at_str.replace("Z", "+00:00")
+                        )
                         if updated_at >= yesterday:
                             is_completed_yesterday = True
                     except Exception:
@@ -924,12 +965,14 @@ async def confirm_standup_tasks(task_ids: list, member_name: str):
         sys.stdout.flush()
 
         try:
-            await manager.broadcast({
-                "type": "tasks_confirmed",
-                "task_ids": updated_tasks,
-                "confirmed_by": member_name,
-                "timestamp": datetime.now(timezone.utc).isoformat()
-            })
+            await manager.broadcast(
+                {
+                    "type": "tasks_confirmed",
+                    "task_ids": updated_tasks,
+                    "confirmed_by": member_name,
+                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                }
+            )
             print(f"[WEBSOCKET] 📡 Broadcast standup confirmation for {updated_tasks}")
             sys.stdout.flush()
         except Exception as e:
@@ -940,7 +983,7 @@ async def confirm_standup_tasks(task_ids: list, member_name: str):
 async def run_daily_standup():
     print("[STANDUP BOT] Running daily standup summary check...")
     sys.stdout.flush()
-    
+
     users_filepath = "discord_users.json"
     if not os.path.exists(users_filepath):
         print("[STANDUP BOT] No discord_users.json found. Skipping.")
@@ -959,14 +1002,14 @@ async def run_daily_standup():
 
         # Build message
         msg = f"Hey {discord_username}! Here is your daily update:\n\n"
-        
+
         msg += "Completed yesterday:\n"
         if completed:
             for task in completed:
                 msg += f" - {task['id']}: {task['title']}\n"
         else:
             msg += " - None\n"
-            
+
         msg += "\nIn Progress:\n"
         if in_progress:
             for task in in_progress:
@@ -998,6 +1041,7 @@ async def standup_scheduler():
         if last_standup_run_date != today_str:
             last_standup_run_date = today_str
             await run_daily_standup()
+
 
 # =====================================================================
 # Shared Infrastructure Helpers
@@ -1041,6 +1085,7 @@ def process_and_save(platform: str, event_type: str, payload: dict) -> Normalize
 # STATE MACHINE HELPERS
 # =====================================================================
 
+
 def extract_task_references(commit_message: str) -> list:
     """
     Scans a commit message for task references.
@@ -1054,9 +1099,9 @@ def extract_task_references(commit_message: str) -> list:
     Returns a list of task IDs found in the message.
     """
     patterns = [
-        r'(:fixes|closes|resolves)\s+task[_\s#]+(\d+)',
-        r'(:fixes|closes|resolves)\s+#(\d+)',
-        r'task[_\s#]+(\d+)',
+        r"(:fixes|closes|resolves)\s+task[_\s#]+(\d+)",
+        r"(:fixes|closes|resolves)\s+#(\d+)",
+        r"task[_\s#]+(\d+)",
     ]
     found = []
     message_lower = commit_message.lower()
@@ -1094,18 +1139,20 @@ def update_task_status(task_ref: str, new_status: str) -> bool:
 
         old_status = task.state
         task.state = new_status
-        
+
         if not task.history:
             task.history = []
-            
-        task.history.append({
-            "type": "STATUS_CHANGE",
-            "from": old_status,
-            "to": new_status,
-            "actor": "manual_update",
-            "message": f"Status manually updated to {new_status}",
-            "timestamp": datetime.now(timezone.utc).isoformat()
-        })
+
+        task.history.append(
+            {
+                "type": "STATUS_CHANGE",
+                "from": old_status,
+                "to": new_status,
+                "actor": "manual_update",
+                "message": f"Status manually updated to {new_status}",
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+            }
+        )
         flag_modified(task, "history")
 
         db.commit()
@@ -1120,13 +1167,17 @@ def update_task_status(task_ref: str, new_status: str) -> bool:
         # task node color on screen without any page refresh.
         # ──────────────────────────────────────────────────────
         try:
-            asyncio.create_task(manager.broadcast({
-                "type": "task_updated",
-                "task_id": full_task_id,
-                "old_status": old_status,
-                "new_status": new_status,
-                "timestamp": datetime.now(timezone.utc).isoformat()
-            }))
+            asyncio.create_task(
+                manager.broadcast(
+                    {
+                        "type": "task_updated",
+                        "task_id": full_task_id,
+                        "old_status": old_status,
+                        "new_status": new_status,
+                        "timestamp": datetime.now(timezone.utc).isoformat(),
+                    }
+                )
+            )
             print(f"[WEBSOCKET] 📡 Broadcast triggered for {full_task_id}")
             sys.stdout.flush()
         except Exception as e:
@@ -1157,10 +1208,7 @@ async def health_check():
 async def receive_webhook(request: Request):
     payload = await request.json()
     log_webhook_payload("GENERIC", payload)
-    return {
-        "received": True,
-        "timestamp": datetime.now(timezone.utc).isoformat()
-    }
+    return {"received": True, "timestamp": datetime.now(timezone.utc).isoformat()}
 
 
 # =====================================================================
@@ -1173,7 +1221,7 @@ async def simulate_webhook(request: Request):
     return {
         "simulated": True,
         "payload_received": payload,
-        "timestamp": datetime.now(timezone.utc).isoformat()
+        "timestamp": datetime.now(timezone.utc).isoformat(),
     }
 
 
@@ -1223,20 +1271,17 @@ async def receive_github(request: Request):
 
     # Verify signature if we have a secret for this user
     if github_signature and user_secret:
-        expected_signature = "sha256=" + hmac.new(
-            user_secret.encode(),
-            raw_body,
-            hashlib.sha256
-        ).hexdigest()
+        expected_signature = (
+            "sha256="
+            + hmac.new(user_secret.encode(), raw_body, hashlib.sha256).hexdigest()
+        )
 
         if not hmac.compare_digest(github_signature, expected_signature):
             print(f"[GITHUB] ❌ Signature verification FAILED for {sender}")
             sys.stdout.flush()
             from fastapi.responses import JSONResponse
-            return JSONResponse(
-                status_code=401,
-                content={"error": "Invalid signature"}
-            )
+
+            return JSONResponse(status_code=401, content={"error": "Invalid signature"})
         print(f"[GITHUB] ✅ Signature verified for {sender}")
         sys.stdout.flush()
     # ── END SIGNATURE VERIFICATION ──────────────────────────────
@@ -1255,35 +1300,42 @@ async def receive_github(request: Request):
 
     # ── WEBSOCKET BROADCAST: New Event ─────────────────────────
     # Broadcast every new event to the frontend feed
-    asyncio.create_task(manager.broadcast({
-        "type": "new_event",
-        **normalized.model_dump()
-    }))
+    asyncio.create_task(
+        manager.broadcast({"type": "new_event", **normalized.model_dump()})
+    )
 
     # ── SMART STATE MACHINE ────────────────────────────────────
     updated_tasks = []
-    
+
     # Pass the normalized dict straight to the engine (now async)
     state_change = await process_normalized_event(normalized.model_dump())
-    
+
     if state_change:
         # A state transition successfully happened!
         updated_tasks.append(state_change["id"])
-        
+
         # Get the old and new status from the history trail
         last_transition = state_change["history"][-1] if state_change["history"] else {}
-        old_status = last_transition.get("from", "PENDING").lower() if last_transition.get("from") != "PENDING" else "todo"
+        old_status = (
+            last_transition.get("from", "PENDING").lower()
+            if last_transition.get("from") != "PENDING"
+            else "todo"
+        )
         new_status = state_change["status"]
-        
+
         # ── WEBSOCKET BROADCAST ────────────────────────────────
         try:
-            asyncio.create_task(manager.broadcast({
-                "type": "task_updated",
-                "task_id": state_change["id"],
-                "old_status": old_status,
-                "new_status": new_status,
-                "timestamp": datetime.now(timezone.utc).isoformat()
-            }))
+            asyncio.create_task(
+                manager.broadcast(
+                    {
+                        "type": "task_updated",
+                        "task_id": state_change["id"],
+                        "old_status": old_status,
+                        "new_status": new_status,
+                        "timestamp": datetime.now(timezone.utc).isoformat(),
+                    }
+                )
+            )
             print(f"[WEBSOCKET] 📡 Broadcast triggered for {state_change['id']}")
             sys.stdout.flush()
         except Exception as e:
@@ -1297,8 +1349,9 @@ async def receive_github(request: Request):
         "sender": sender,
         "normalized_summary": normalized.action_summary,
         "tasks_auto_updated": updated_tasks,
-        "timestamp": datetime.now(timezone.utc).isoformat()
+        "timestamp": datetime.now(timezone.utc).isoformat(),
     }
+
 
 # =====================================================================
 # Route 5 — Discord Webhook Receiver
@@ -1316,7 +1369,7 @@ async def receive_discord(request: Request):
         "received": True,
         "platform": "discord",
         "normalized_summary": normalized.action_summary,
-        "timestamp": datetime.now(timezone.utc).isoformat()
+        "timestamp": datetime.now(timezone.utc).isoformat(),
     }
 
 
@@ -1332,7 +1385,7 @@ async def receive_figma(request: Request):
         "received": True,
         "platform": "figma",
         "normalized_summary": normalized.action_summary,
-        "timestamp": datetime.now(timezone.utc).isoformat()
+        "timestamp": datetime.now(timezone.utc).isoformat(),
     }
 
 
@@ -1347,6 +1400,7 @@ async def get_tasks(project_id: str = None):
     from fastapi import Response
     from database import SessionLocal
     from models_sql import TaskTable
+
     db = SessionLocal()
     try:
         if project_id:
@@ -1355,35 +1409,39 @@ async def get_tasks(project_id: str = None):
             db_tasks = db.query(TaskTable).all()
         tasks = []
         for t in db_tasks:
-            tasks.append({
-                "id": t.id,
-                "title": t.title,
-                "status": t.state.lower() if t.state else "todo",
-                "assigned_to": t.assigned_to,
-                "project_id": t.project_id,
-                "order": t.order,
-                "depends_on": t.depends_on,
-                "created_at": t.created_at,
-                "pr_number": t.pr_number,
-                "branch": t.branch,
-                "history": t.history
-            })
+            tasks.append(
+                {
+                    "id": t.id,
+                    "title": t.title,
+                    "status": t.state.lower() if t.state else "todo",
+                    "assigned_to": t.assigned_to,
+                    "project_id": t.project_id,
+                    "order": t.order,
+                    "depends_on": t.depends_on,
+                    "created_at": t.created_at,
+                    "pr_number": t.pr_number,
+                    "branch": t.branch,
+                    "history": t.history,
+                }
+            )
         result = {"total": len(tasks), "tasks": tasks}
         formatted_json = json.dumps(result, indent=4)
         return Response(content=formatted_json, media_type="application/json")
     finally:
         db.close()
 
+
 # TODO: Member 2 (Neo4j Team) - Hook this /graph endpoint up to the Neo4j database!
 @app.get("/graph")
 async def get_graph():
     try:
-        response = requests.get("https://orchestra-ai-36zm.onrender.com/graph", timeout=30)
+        response = requests.get(
+            "https://orchestra-ai-36zm.onrender.com/graph", timeout=30
+        )
         response.raise_for_status()
         return response.json()
     except Exception as exc:
         return {"error": str(exc), "nodes": [], "edges": []}
-
 
 
 # =====================================================================
@@ -1401,6 +1459,7 @@ async def get_single_task(task_id: str):
             return task
     return {"error": "Task not found"}
 
+
 @app.post("/tasks")
 async def create_new_task(request: Request):
     body = await request.json()
@@ -1408,36 +1467,41 @@ async def create_new_task(request: Request):
     title = body.get("title", "Untitled")
     if not task_id:
         return {"error": "'id' field required"}
-        
+
     filepath = "tasks.json"
     if not os.path.exists(filepath):
         initialize_tasks_file()
     with open(filepath, "r") as f:
         data = json.load(f)
-        
+
     new_task = {
         "id": task_id,
         "title": title,
         "status": "todo",
-        "created_at": datetime.now(timezone.utc).isoformat()
+        "created_at": datetime.now(timezone.utc).isoformat(),
     }
     data["tasks"].append(new_task)
     data["total"] = len(data["tasks"])
-    
+
     with open(filepath, "w") as f:
         json.dump(data, f, indent=2)
-        
+
     # Broadcast new task creation
     try:
-        asyncio.create_task(manager.broadcast({
-            "type": "task_created",
-            "task": new_task,
-            "timestamp": datetime.now(timezone.utc).isoformat()
-        }))
+        asyncio.create_task(
+            manager.broadcast(
+                {
+                    "type": "task_created",
+                    "task": new_task,
+                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                }
+            )
+        )
     except Exception:
         pass
-        
+
     return new_task
+
 
 @app.patch("/tasks/{task_id}/state")
 async def manually_update_task_state(task_id: str, request: Request):
@@ -1445,58 +1509,64 @@ async def manually_update_task_state(task_id: str, request: Request):
     new_state = body.get("state")
     if not new_state:
         return {"error": "'state' field required"}
-        
+
     # Extract just the number for the update function (e.g. "task_001" -> "1")
     task_ref = task_id.replace("task_", "").lstrip("0")
     if not task_ref:
         task_ref = "0"
-        
+
     success = update_task_status(task_ref, new_state)
     if success:
         return {"status": "success", "message": f"Updated {task_id} to {new_state}"}
     return {"error": "Task not found"}
+
+
 @app.post("/tasks/{task_id}/history")
 async def add_task_history_update(task_id: str, request: Request):
     body = await request.json()
     message = body.get("message")
     actor = body.get("actor", "unknown")
-    
+
     if not message:
         return {"error": "'message' field required"}
-        
+
     from database import SessionLocal
     from models_sql import TaskTable
     from sqlalchemy.orm.attributes import flag_modified
-        
+
     db = SessionLocal()
     try:
         task = db.query(TaskTable).filter(TaskTable.id == task_id).first()
         if not task:
             return {"error": "Task not found"}
-            
+
         if not task.history:
             task.history = []
-            
+
         update_entry = {
             "type": "UPDATE",
             "message": message,
             "actor": actor,
-            "timestamp": datetime.now(timezone.utc).isoformat()
+            "timestamp": datetime.now(timezone.utc).isoformat(),
         }
         task.history.append(update_entry)
         flag_modified(task, "history")
-        
+
         db.commit()
-            
+
         try:
-            asyncio.create_task(manager.broadcast({
-                "type": "task_history_updated",
-                "task_id": task_id,
-                "update": update_entry
-            }))
+            asyncio.create_task(
+                manager.broadcast(
+                    {
+                        "type": "task_history_updated",
+                        "task_id": task_id,
+                        "update": update_entry,
+                    }
+                )
+            )
         except Exception:
             pass
-            
+
         return {"status": "success", "history_entry": update_entry}
     except Exception as e:
         db.rollback()
@@ -1513,30 +1583,32 @@ async def get_events():
     from fastapi.responses import Response
     from database import SessionLocal
     from models_sql import EventTable
+
     db = SessionLocal()
     try:
         db_events = db.query(EventTable).all()
         events = []
         for e in db_events:
-            events.append({
-                "id": e.id,
-                "platform": e.platform,
-                "event_type": e.event_type,
-                "actor": e.actor,
-                "timestamp": e.timestamp,
-                "repo": e.repo,
-                "channel": e.channel,
-                "action_summary": e.action_summary,
-                "raw_metadata": e.raw_metadata
-            })
-        result = {
-            "total": len(events),
-            "events": events
-        }
+            events.append(
+                {
+                    "id": e.id,
+                    "platform": e.platform,
+                    "event_type": e.event_type,
+                    "actor": e.actor,
+                    "timestamp": e.timestamp,
+                    "repo": e.repo,
+                    "channel": e.channel,
+                    "action_summary": e.action_summary,
+                    "raw_metadata": e.raw_metadata,
+                }
+            )
+        result = {"total": len(events), "events": events}
         formatted = json.dumps(result, indent=4)
         return Response(content=formatted, media_type="application/json")
     finally:
         db.close()
+
+
 # =====================================================================
 # Route 9 — WebSocket Live Connection
 # =====================================================================
@@ -1569,11 +1641,13 @@ async def websocket_endpoint(websocket: WebSocket):
     await manager.connect(websocket)
 
     # Send a welcome message so Member 5 knows connection succeeded
-    await websocket.send_json({
-        "type": "connection_established",
-        "message": "Connected to Timeline Orchestra live updates",
-        "timestamp": datetime.now(timezone.utc).isoformat()
-    })
+    await websocket.send_json(
+        {
+            "type": "connection_established",
+            "message": "Connected to Timeline Orchestra live updates",
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+        }
+    )
 
     try:
         # Keep the connection alive forever
@@ -1584,16 +1658,20 @@ async def websocket_endpoint(websocket: WebSocket):
 
             if data == "ping":
                 # Browser is checking if we're still here — respond
-                await websocket.send_json({
-                    "type": "pong",
-                    "timestamp": datetime.now(timezone.utc).isoformat()
-                })
+                await websocket.send_json(
+                    {
+                        "type": "pong",
+                        "timestamp": datetime.now(timezone.utc).isoformat(),
+                    }
+                )
                 print(f"[WEBSOCKET] Ping received — pong sent")
                 sys.stdout.flush()
 
     except WebSocketDisconnect:
         # Browser closed the tab — remove from list
         manager.disconnect(websocket)
+
+
 # =====================================================================
 # Route — GitHub OAuth Login
 # =====================================================================
@@ -1635,33 +1713,29 @@ async def github_callback(code: str, state: str = None):
     import httpx
 
     async with httpx.AsyncClient() as client:
-
         # Step 1 — Exchange code for access token
         token_response = await client.post(
             "https://github.com/login/oauth/access_token",
             json={
                 "client_id": GITHUB_CLIENT_ID,
                 "client_secret": GITHUB_CLIENT_SECRET,
-                "code": code
+                "code": code,
             },
-            headers={"Accept": "application/json"}
+            headers={"Accept": "application/json"},
         )
         token_data = token_response.json()
         access_token = token_data.get("access_token")
 
         if not access_token:
-            return {
-                "error": "Failed to get access token",
-                "details": token_data
-            }
+            return {"error": "Failed to get access token", "details": token_data}
 
         # Step 2 — Get user's GitHub profile
         user_response = await client.get(
             "https://api.github.com/user",
             headers={
                 "Authorization": f"Bearer {access_token}",
-                "Accept": "application/json"
-            }
+                "Accept": "application/json",
+            },
         )
         user_data = user_response.json()
         github_username = user_data.get("login")
@@ -1669,6 +1743,7 @@ async def github_callback(code: str, state: str = None):
     # Step 3 — Auto register webhook on their repo
     # Decode the repo name from the state parameter
     import urllib.parse
+
     repo = urllib.parse.unquote(state) if state else None
     webhook_result = {"success": False, "note": "No repo provided"}
 
@@ -1678,17 +1753,16 @@ async def github_callback(code: str, state: str = None):
         webhook_result = await register_github_webhook(
             access_token=access_token,
             github_username=github_username,
-            repo_full_name=repo
+            repo_full_name=repo,
         )
         save_connected_user(
             github_username=github_username,
             access_token=access_token,
             repo_full_name=repo,
-            webhook_result=webhook_result
+            webhook_result=webhook_result,
         )
         save_unified_user_profile(
-            github_username=github_username,
-            github_access_token=access_token
+            github_username=github_username, github_access_token=access_token
         )
 
     return {
@@ -1697,9 +1771,9 @@ async def github_callback(code: str, state: str = None):
             "github_username": github_username,
             "name": user_data.get("name"),
             "avatar": user_data.get("avatar_url"),
-            "github_url": user_data.get("html_url")
+            "github_url": user_data.get("html_url"),
         },
-        "webhook_registration": webhook_result
+        "webhook_registration": webhook_result,
     }
 
 
@@ -1722,21 +1796,21 @@ async def get_connected_users():
 
     safe_users = []
     for username, data in users.items():
-        safe_users.append({
-            "github_username": data.get("github_username"),
-            "repo": data.get("repo"),
-            "connected_at": data.get("connected_at"),
-            "webhook_registered": data.get("webhook_registered"),
-            "webhook_id": data.get("webhook_id")
-        })
+        safe_users.append(
+            {
+                "github_username": data.get("github_username"),
+                "repo": data.get("repo"),
+                "connected_at": data.get("connected_at"),
+                "webhook_registered": data.get("webhook_registered"),
+                "webhook_id": data.get("webhook_id"),
+            }
+        )
 
-    result = {
-        "total": len(safe_users),
-        "connected_users": safe_users
-    }
+    result = {"total": len(safe_users), "connected_users": safe_users}
 
     formatted = json.dumps(result, indent=4)
     return Response(content=formatted, media_type="application/json")
+
 
 # =====================================================================
 # Route — Discord OAuth Login
@@ -1783,7 +1857,6 @@ async def discord_callback(code: str):
     import httpx
 
     async with httpx.AsyncClient() as client:
-
         # Step 1 — Exchange code for access token
         token_response = await client.post(
             "https://discord.com/api/oauth2/token",
@@ -1792,9 +1865,9 @@ async def discord_callback(code: str):
                 "client_secret": DISCORD_CLIENT_SECRET,
                 "grant_type": "authorization_code",
                 "code": code,
-                "redirect_uri": "https://orchestra-backend-2v5a.onrender.com/auth/discord/callback"
+                "redirect_uri": "https://orchestra-backend-2v5a.onrender.com/auth/discord/callback",
             },
-            headers={"Content-Type": "application/x-www-form-urlencoded"}
+            headers={"Content-Type": "application/x-www-form-urlencoded"},
         )
         token_data = token_response.json()
         access_token = token_data.get("access_token")
@@ -1802,15 +1875,13 @@ async def discord_callback(code: str):
         if not access_token:
             return {
                 "error": "Failed to get access token from Discord",
-                "details": token_data
+                "details": token_data,
             }
 
         # Step 2 — Use token to get user's Discord profile
         user_response = await client.get(
             "https://discord.com/api/users/@me",
-            headers={
-                "Authorization": f"Bearer {access_token}"
-            }
+            headers={"Authorization": f"Bearer {access_token}"},
         )
         user_data = user_response.json()
 
@@ -1822,36 +1893,39 @@ async def discord_callback(code: str):
         # Build avatar URL if they have one
         avatar_url = None
         if avatar_hash:
-            avatar_url = f"https://cdn.discordapp.com/avatars/{discord_id}/{avatar_hash}.png"
+            avatar_url = (
+                f"https://cdn.discordapp.com/avatars/{discord_id}/{avatar_hash}.png"
+            )
 
     # Step 3 — Save this user to our records
     save_discord_user(
         discord_id=discord_id,
         discord_username=discord_username,
         access_token=access_token,
-        email=email
+        email=email,
     )
     save_unified_user_profile(
         discord_id=discord_id,
         discord_username=discord_username,
         discord_access_token=access_token,
-        email=email
+        email=email,
     )
 
     return {
-    "message": "Discord login successful",
-    "user": {
-        "discord_id": discord_id,
-        "discord_username": discord_username,
-        "email": email,
-        "avatar": avatar_url
-    },
-    "next_step": {
-        "action": "Add Orchestra Bot to your Discord server",
-        "bot_invite_url": f"https://discord.com/oauth2/authorizeclient_id={DISCORD_CLIENT_ID}&permissions=84992&scope=bot",
-        "instructions": "Open the bot_invite_url and select your team's Discord server to add Orchestra Bot"
+        "message": "Discord login successful",
+        "user": {
+            "discord_id": discord_id,
+            "discord_username": discord_username,
+            "email": email,
+            "avatar": avatar_url,
+        },
+        "next_step": {
+            "action": "Add Orchestra Bot to your Discord server",
+            "bot_invite_url": f"https://discord.com/oauth2/authorizeclient_id={DISCORD_CLIENT_ID}&permissions=84992&scope=bot",
+            "instructions": "Open the bot_invite_url and select your team's Discord server to add Orchestra Bot",
+        },
     }
-}
+
 
 # =====================================================================
 # Route — View Discord Connected Users
@@ -1876,20 +1950,20 @@ async def get_discord_users():
     # Never expose access tokens in API responses
     safe_users = []
     for discord_id, data in users.items():
-        safe_users.append({
-            "discord_id": data.get("discord_id"),
-            "discord_username": data.get("discord_username"),
-            "email": data.get("email"),
-            "connected_at": data.get("connected_at")
-        })
+        safe_users.append(
+            {
+                "discord_id": data.get("discord_id"),
+                "discord_username": data.get("discord_username"),
+                "email": data.get("email"),
+                "connected_at": data.get("connected_at"),
+            }
+        )
 
-    result = {
-        "total": len(safe_users),
-        "discord_users": safe_users
-    }
+    result = {"total": len(safe_users), "discord_users": safe_users}
 
     formatted = json.dumps(result, indent=4)
     return Response(content=formatted, media_type="application/json")
+
 
 # =====================================================================
 # Route — View Unified User Profiles
@@ -1913,28 +1987,29 @@ async def get_users():
     # Hide access tokens from response
     safe_profiles = []
     for user_id, data in profiles.items():
-        safe_profiles.append({
-            "user_id": data.get("user_id"),
-            "email": data.get("email"),
-            "github_username": data.get("github_username"),
-            "discord_username": data.get("discord_username"),
-            "discord_id": data.get("discord_id"),
-            "platforms_connected": [
-                p for p in ["github", "discord"]
-                if data.get(f"{p}_username") or data.get(f"{p}_id")
-            ],
-            "created_at": data.get("created_at"),
-            "updated_at": data.get("updated_at")
-        })
+        safe_profiles.append(
+            {
+                "user_id": data.get("user_id"),
+                "email": data.get("email"),
+                "github_username": data.get("github_username"),
+                "discord_username": data.get("discord_username"),
+                "discord_id": data.get("discord_id"),
+                "platforms_connected": [
+                    p
+                    for p in ["github", "discord"]
+                    if data.get(f"{p}_username") or data.get(f"{p}_id")
+                ],
+                "created_at": data.get("created_at"),
+                "updated_at": data.get("updated_at"),
+            }
+        )
 
-    result = {
-        "total": len(safe_profiles),
-        "users": safe_profiles
-    }
+    result = {"total": len(safe_profiles), "users": safe_profiles}
 
     formatted = json.dumps(result, indent=4)
     return Response(content=formatted, media_type="application/json")
-    
+
+
 # =====================================================================
 # Route — Discord Activity Summary
 # =====================================================================
@@ -1961,21 +2036,24 @@ async def get_discord_activity():
 
     summary = []
     for actor, data in activity.items():
-        summary.append({
-            "member": actor,
-            "currently_working_on": data.get("latest_message", "No recent updates"),
-            "last_seen": data.get("last_seen", "unknown"),
-            "total_messages": data.get("message_count", 0)
-        })
+        summary.append(
+            {
+                "member": actor,
+                "currently_working_on": data.get("latest_message", "No recent updates"),
+                "last_seen": data.get("last_seen", "unknown"),
+                "total_messages": data.get("message_count", 0),
+            }
+        )
 
     result = {
         "total_members_active": len(summary),
         "generated_at": datetime.now(timezone.utc).isoformat(),
-        "team_activity": summary
+        "team_activity": summary,
     }
 
     formatted = json.dumps(result, indent=4)
     return Response(content=formatted, media_type="application/json")
+
 
 @app.get("/test/standup")
 async def test_standup():
@@ -1984,8 +2062,9 @@ async def test_standup():
     await run_daily_standup()
     return {
         "message": "Standup triggered manually",
-        "check": "Your Discord DMs for the standup message"
+        "check": "Your Discord DMs for the standup message",
     }
+
 
 # =====================================================================
 # Route — Trigger Daily Standup Manually
