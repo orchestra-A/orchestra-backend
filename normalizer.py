@@ -37,7 +37,13 @@ def _normalize_github_push(body: dict) -> NormalizedEvent:
             "branch": branch,
             "commit_count": len(commits),
             "commits": [
-                {"id": c.get("id", "")[:7], "message": c.get("message", "")}
+                {
+                    "id": c.get("id", "")[:7],
+                    "message": c.get("message", ""),
+                    "added": c.get("added", []),
+                    "modified": c.get("modified", []),
+                    "removed": c.get("removed", []),
+                }
                 for c in commits
             ],
             "compare_url": body.get("compare"),
