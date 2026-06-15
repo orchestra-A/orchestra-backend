@@ -1343,13 +1343,16 @@ async def receive_figma(request: Request):
 # This ensures Member 3's UI sees the latest State Machine updates.
 # =====================================================================
 @app.get("/tasks")
-async def get_tasks():
+async def get_tasks(project_id: str = None):
     from fastapi import Response
     from database import SessionLocal
     from models_sql import TaskTable
     db = SessionLocal()
     try:
-        db_tasks = db.query(TaskTable).all()
+        if project_id:
+            db_tasks = db.query(TaskTable).filter_by(project_id=project_id).all()
+        else:
+            db_tasks = db.query(TaskTable).all()
         tasks = []
         for t in db_tasks:
             tasks.append({
@@ -1381,32 +1384,7 @@ async def get_graph():
     except Exception as exc:
         return {"error": str(exc), "nodes": [], "edges": []}
 
-# =====================================================================
-# Route 7.1 — Live Tasks Endpoint (Member 2's API)
-# =====================================================================
-@app.get("/tasks/live")
-async def get_tasks_live():
-    import urllib.request
-    from fastapi import Response
-    url = "https://orchestra-backend-2v5a.onrender.com/tasks"
-    try:
-        req = urllib.request.Request(url)
-        with urllib.request.urlopen(req, timeout=10) as response:
-            data = json.loads(response.read().decode())
-        result = {
-            "total": len(data),
-            "tasks": data
-        }
-    except Exception as e:
-        print(f"[ERROR] Failed to fetch tasks from Graph DB: {e}")
-        result = {
-            "total": 0,
-            "tasks": [],
-            "error": str(e)
-        }
-    
-    formatted_json = json.dumps(result, indent=4)
-    return Response(content=formatted_json, media_type="application/json")
+
 
 # =====================================================================
 # Route 7.2 — Task CRUD Endpoints (Week 3 Day 2)
