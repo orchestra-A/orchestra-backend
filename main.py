@@ -21,10 +21,20 @@ from models import NormalizedEvent
 # =====================================================================
 # FastAPI Application Metadata
 # =====================================================================
+from fastapi.middleware.cors import CORSMiddleware
+
 app = FastAPI(
     title="Timeline Orchestra Backend",
     description="Infrastructure layer for Timeline Orchestra",
     version="0.7.0"
+)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 @app.on_event("startup")
@@ -1066,68 +1076,70 @@ def update_task_status(task_ref: str, new_status: str) -> bool:
     Returns True if task was found and updated.
     Returns False if task was not found.
     """
-    filepath = "tasks.json"
-
-    if not os.path.exists(filepath):
-        print(f"[STATE MACHINE] tasks.json not found — cannot update task")
-        sys.stdout.flush()
-        return False
-
-    with open(filepath, "r") as f:
-        data = json.load(f)
+    from database import SessionLocal
+    from models_sql import TaskTable
+    from sqlalchemy.orm.attributes import flag_modified
 
     # Build the full task ID from the number
     # "8" becomes "task_008"
     full_task_id = f"task_{task_ref.zfill(3)}"
 
-    for task in data.get("tasks", []):
-        if task["id"] == full_task_id:
-            old_status = task["status"]
-            task["status"] = new_status
+    db = SessionLocal()
+    try:
+        task = db.query(TaskTable).filter(TaskTable.id == full_task_id).first()
+        if not task:
+            print(f"[STATE MACHINE] ❌ Task {full_task_id} not found in database")
+            sys.stdout.flush()
+            return False
+
+        old_status = task.state
+        task.state = new_status
+        
+        if not task.history:
+            task.history = []
             
-            if "history" not in task:
-                task["history"] = []
-                
-            task["history"].append({
-                "type": "STATUS_CHANGE",
-                "from": old_status,
-                "to": new_status,
-                "actor": "manual_update",
-                "message": f"Status manually updated to {new_status}",
+        task.history.append({
+            "type": "STATUS_CHANGE",
+            "from": old_status,
+            "to": new_status,
+            "actor": "manual_update",
+            "message": f"Status manually updated to {new_status}",
+            "timestamp": datetime.now(timezone.utc).isoformat()
+        })
+        flag_modified(task, "history")
+
+        db.commit()
+
+        print(f"[STATE MACHINE] ✅ {full_task_id}: {old_status} → {new_status}")
+        sys.stdout.flush()
+
+        # ── WEBSOCKET BROADCAST ────────────────────────────────
+        # The moment a task status changes, tell every connected
+        # browser about it immediately.
+        # Member 5's frontend listens for this and changes the
+        # task node color on screen without any page refresh.
+        # ──────────────────────────────────────────────────────
+        try:
+            asyncio.create_task(manager.broadcast({
+                "type": "task_updated",
+                "task_id": full_task_id,
+                "old_status": old_status,
+                "new_status": new_status,
                 "timestamp": datetime.now(timezone.utc).isoformat()
-            })
-
-            with open(filepath, "w") as f:
-                json.dump(data, f, indent=2)
-
-            print(f"[STATE MACHINE] ✅ {full_task_id}: {old_status} → {new_status}")
+            }))
+            print(f"[WEBSOCKET] 📡 Broadcast triggered for {full_task_id}")
+            sys.stdout.flush()
+        except Exception as e:
+            print(f"[WEBSOCKET] ⚠️ Broadcast failed: {e}")
             sys.stdout.flush()
 
-            # ── WEBSOCKET BROADCAST ────────────────────────────────
-            # The moment a task status changes, tell every connected
-            # browser about it immediately.
-            # Member 5's frontend listens for this and changes the
-            # task node color on screen without any page refresh.
-            # ──────────────────────────────────────────────────────
-            try:
-                asyncio.create_task(manager.broadcast({
-                    "type": "task_updated",
-                    "task_id": full_task_id,
-                    "old_status": old_status,
-                    "new_status": new_status,
-                    "timestamp": datetime.now(timezone.utc).isoformat()
-                }))
-                print(f"[WEBSOCKET] 📡 Broadcast triggered for {full_task_id}")
-                sys.stdout.flush()
-            except Exception as e:
-                print(f"[WEBSOCKET] ⚠️ Broadcast failed: {e}")
-                sys.stdout.flush()
-
-            return True
-
-    print(f"[STATE MACHINE] ❌ Task {full_task_id} not found in tasks.json")
-    sys.stdout.flush()
-    return False
+        return True
+    except Exception as e:
+        print(f"[STATE MACHINE] Error updating task {full_task_id}: {e}")
+        db.rollback()
+        return False
+    finally:
+        db.close()
 
 
 # =====================================================================
@@ -1474,41 +1486,45 @@ async def add_task_history_update(task_id: str, request: Request):
     if not message:
         return {"error": "'message' field required"}
         
-    filepath = "tasks.json"
-    if not os.path.exists(filepath):
-        return {"error": "tasks.json not found"}
+    from database import SessionLocal
+    from models_sql import TaskTable
+    from sqlalchemy.orm.attributes import flag_modified
         
-    with open(filepath, "r") as f:
-        data = json.load(f)
+    db = SessionLocal()
+    try:
+        task = db.query(TaskTable).filter(TaskTable.id == task_id).first()
+        if not task:
+            return {"error": "Task not found"}
+            
+        if not task.history:
+            task.history = []
+            
+        update_entry = {
+            "type": "UPDATE",
+            "message": message,
+            "actor": actor,
+            "timestamp": datetime.now(timezone.utc).isoformat()
+        }
+        task.history.append(update_entry)
+        flag_modified(task, "history")
         
-    for task in data.get("tasks", []):
-        if task["id"] == task_id:
-            if "history" not in task:
-                task["history"] = []
-                
-            update_entry = {
-                "type": "UPDATE",
-                "message": message,
-                "actor": actor,
-                "timestamp": datetime.now(timezone.utc).isoformat()
-            }
-            task["history"].append(update_entry)
+        db.commit()
             
-            with open(filepath, "w") as f:
-                json.dump(data, f, indent=2)
-                
-            try:
-                asyncio.create_task(manager.broadcast({
-                    "type": "task_history_updated",
-                    "task_id": task_id,
-                    "update": update_entry
-                }))
-            except Exception:
-                pass
-                
-            return {"status": "success", "history_entry": update_entry}
+        try:
+            asyncio.create_task(manager.broadcast({
+                "type": "task_history_updated",
+                "task_id": task_id,
+                "update": update_entry
+            }))
+        except Exception:
+            pass
             
-    return {"error": "Task not found"}
+        return {"status": "success", "history_entry": update_entry}
+    except Exception as e:
+        db.rollback()
+        return {"error": str(e)}
+    finally:
+        db.close()
 
 
 # =====================================================================
