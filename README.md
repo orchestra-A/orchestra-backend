@@ -12,14 +12,14 @@ Responsible for core server hosting, API endpoint routing, and receiving incomin
 - Automatically registers GitHub webhooks for new users using OAuth.
 - Catches live webhook events via dedicated endpoints (`/webhook/github`, `/webhook/discord`, `/webhook/figma`).
 - Validates payload security (e.g., verifying `X-Hub-Signature-256` HMAC hashes for GitHub).
-- Serves task mock data and REST endpoints (`/tasks`, `/tasks/{id}`) for the frontend team.
+- Serves live task data and REST endpoints (`/tasks`, `/tasks/{id}`) for the frontend team directly from PostgreSQL.
 - Hosts a live WebSocket server at `/ws` for real-time state machine updates.
 
 ### 2. Data Pipeline Layer
 Responsible for transforming raw, multi-platform events into a clean, uniform format.
 - Parses incoming JSON payloads and extracts crucial metadata (branch, commits, sender).
 - Routes messy data through the **Semantic Data Normalizer** (`normalizer.py`).
-- Persists standardized timeline blocks into a live serverless PostgreSQL database (Neon) via SQLAlchemy, accessible via the `GET /events` endpoint.
+- Persists standardized timeline blocks into a live serverless PostgreSQL database via SQLAlchemy, accessible via the `GET /events` endpoint.
 
 ---
 
@@ -61,7 +61,7 @@ uvicorn main:app --reload --port 8000
 - **Test Task Endpoints:**
   ```bash
   curl -X GET http://localhost:8000/tasks
-  curl -X GET http://localhost:8000/tasks/live
+  curl -X GET http://localhost:8000/tasks?project_id=your_project_id
   ```
 - **View Normalized Events:** Open `http://localhost:8000/events` in your browser.
 
