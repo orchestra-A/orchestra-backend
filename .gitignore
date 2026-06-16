@@ -30,3 +30,6 @@ discord_users.json
 *.db
 *.sqlite3
 
+# IDE configs
+.vscode/
+pyrightconfig.json

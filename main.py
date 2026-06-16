@@ -296,7 +296,7 @@ def save_connected_user(
 
 
 def save_discord_user(
-    discord_id: str, discord_username: str, access_token: str, email: str = None
+    discord_id: str, discord_username: str, access_token: str, email: str | None = None
 ) -> None:
     """
     Saves a Discord connected user to discord_users.json
@@ -334,12 +334,12 @@ def save_discord_user(
 
 
 def save_unified_user_profile(
-    github_username: str = None,
-    github_access_token: str = None,
-    discord_id: str = None,
-    discord_username: str = None,
-    discord_access_token: str = None,
-    email: str = None,
+    github_username: str | None = None,
+    github_access_token: str | None = None,
+    discord_id: str | None = None,
+    discord_username: str | None = None,
+    discord_access_token: str | None = None,
+    email: str | None = None,
 ) -> dict:
     """
     Creates or updates a unified user profile.
@@ -631,9 +631,9 @@ def initialize_tasks_file():
         for task in tasks_data["tasks"]:
             pid = task.get("project_id")
             order = task.get("order")
-            task["depends_on"] = []
-            if pid and order and order > 1:
-                task["depends_on"] = project_order_tasks[pid][order - 1]
+            task["depends_on"] = []  # type: ignore
+            if pid and order and int(order) > 1:
+                task["depends_on"] = project_order_tasks[pid][int(order) - 1]  # type: ignore
         # ----------------------------
 
         with open("tasks.json", "w") as f:
@@ -1396,7 +1396,7 @@ async def receive_figma(request: Request):
 # This ensures Member 3's UI sees the latest State Machine updates.
 # =====================================================================
 @app.get("/tasks")
-async def get_tasks(project_id: str = None):
+async def get_tasks(project_id: str | None = None):
     from fastapi import Response
     from database import SessionLocal
     from models_sql import TaskTable
@@ -1680,7 +1680,7 @@ async def websocket_endpoint(websocket: WebSocket):
 # After approval, GitHub redirects back to /auth/github/callback
 # =====================================================================
 @app.get("/auth/github")
-async def github_login(repo: str = None):
+async def github_login(repo: str | None = None):
     from fastapi.responses import RedirectResponse
     import urllib.parse
 
@@ -1709,7 +1709,7 @@ async def github_login(repo: str = None):
 # /auth/github/callbackcode=XXX&repo=username/reponame
 # =====================================================================
 @app.get("/auth/github/callback")
-async def github_callback(code: str, state: str = None):
+async def github_callback(code: str, state: str | None = None):
     import httpx
 
     async with httpx.AsyncClient() as client:
