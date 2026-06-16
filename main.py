@@ -1,10 +1,11 @@
+from __future__ import annotations
 from datetime import datetime, timezone, timedelta
 import json
 import sys
 import os
 from fastapi import FastAPI, Request
 from fastapi.websockets import WebSocket, WebSocketDisconnect
-from typing import List
+from typing import List, Optional
 import asyncio
 import re
 import discord
@@ -47,6 +48,14 @@ async def startup_event():
     """
     print("[STARTUP] Server starting...")
     sys.stdout.flush()
+
+    # Create tables in the database if they don't exist
+    from database import engine, Base
+    import models_sql  # registers ConnectedUserTable, DiscordUserTable, UserProfileTable, etc.
+    Base.metadata.create_all(bind=engine)
+    print("[STARTUP] Database tables verified/created.")
+    sys.stdout.flush()
+
     asyncio.create_task(start_discord_bot())
     print("[STARTUP] Discord bot task created")
     sys.stdout.flush()
@@ -265,162 +274,138 @@ def save_connected_user(
     github_username: str, access_token: str, repo_full_name: str, webhook_result: dict
 ) -> None:
     """
-    Saves the connected user's information to connected_users.json.
-
-    This is your record of which users have connected their GitHub.
-    Later this will be stored in a proper database.
-    For now a JSON file works fine for development.
+    Saves the connected user's information to the database.
     """
-    filepath = "connected_users.json"
+    from database import SessionLocal
+    from models_sql import ConnectedUserTable
 
-    if os.path.exists(filepath):
-        with open(filepath, "r") as f:
-            users = json.load(f)
-    else:
-        users = {}
-
-    users[github_username] = {
-        "github_username": github_username,
-        "repo": repo_full_name,
-        "connected_at": datetime.now(timezone.utc).isoformat(),
-        "webhook_registered": webhook_result.get("success", False),
-        "webhook_id": webhook_result.get("webhook_id"),
-        "access_token": access_token,  # In production this would be encrypted
-    }
-
-    with open(filepath, "w") as f:
-        json.dump(users, f, indent=2)
-
-    print(f"[USER] ✅ Saved connected user: {github_username}")
+    db = SessionLocal()
+    try:
+        user = db.query(ConnectedUserTable).filter_by(github_username=github_username).first()
+        if not user:
+            user = ConnectedUserTable(github_username=github_username)
+            db.add(user)
+        user.repo = repo_full_name
+        user.connected_at = datetime.now(timezone.utc).isoformat()
+        user.webhook_registered = webhook_result.get("success", False)
+        user.webhook_id = webhook_result.get("webhook_id")
+        user.access_token = access_token
+        db.commit()
+        print(f"[USER] ✅ Saved connected user to DB: {github_username}")
+    except Exception as e:
+        print(f"[USER] ❌ Failed to save connected user: {e}")
+        db.rollback()
+    finally:
+        db.close()
     sys.stdout.flush()
 
 
 def save_discord_user(
-    discord_id: str, discord_username: str, access_token: str, email: str | None = None
+    discord_id: str, discord_username: str, access_token: str, email: Optional[str] = None
 ) -> None:
     """
-    Saves a Discord connected user to discord_users.json
-
-    When a user logs in with Discord, we save:
-    - Their Discord ID (unique identifier)
-    - Their username
-    - Their access token (for sending them DMs later via bot)
-    - Their email if they provided it
-
-    This file is what the bot uses in Step 4 (daily standup)
-    to know who to send messages to.
+    Saves a Discord connected user to the database.
     """
-    filepath = "discord_users.json"
+    from database import SessionLocal
+    from models_sql import DiscordUserTable
 
-    if os.path.exists(filepath):
-        with open(filepath, "r") as f:
-            users = json.load(f)
-    else:
-        users = {}
-
-    users[discord_id] = {
-        "discord_id": discord_id,
-        "discord_username": discord_username,
-        "access_token": access_token,
-        "email": email,
-        "connected_at": datetime.now(timezone.utc).isoformat(),
-    }
-
-    with open(filepath, "w") as f:
-        json.dump(users, f, indent=2)
-
-    print(f"[DISCORD AUTH] ✅ Saved Discord user: {discord_username}")
+    db = SessionLocal()
+    try:
+        user = db.query(DiscordUserTable).filter_by(discord_id=discord_id).first()
+        if not user:
+            user = DiscordUserTable(discord_id=discord_id)
+            db.add(user)
+        user.discord_username = discord_username
+        user.access_token = access_token
+        user.email = email
+        user.connected_at = datetime.now(timezone.utc).isoformat()
+        db.commit()
+        print(f"[DISCORD AUTH] ✅ Saved Discord user to DB: {discord_username}")
+    except Exception as e:
+        print(f"[DISCORD AUTH] ❌ Failed to save Discord user: {e}")
+        db.rollback()
+    finally:
+        db.close()
     sys.stdout.flush()
 
 
 def save_unified_user_profile(
-    github_username: str | None = None,
-    github_access_token: str | None = None,
-    discord_id: str | None = None,
-    discord_username: str | None = None,
-    discord_access_token: str | None = None,
-    email: str | None = None,
+    github_username: Optional[str] = None,
+    github_access_token: Optional[str] = None,
+    discord_id: Optional[str] = None,
+    discord_username: Optional[str] = None,
+    discord_access_token: Optional[str] = None,
+    email: Optional[str] = None,
 ) -> dict:
     """
-    Creates or updates a unified user profile.
-
-    This is the central identity record for each user.
-    Links their GitHub and Discord accounts together.
-
-    When someone signs up with GitHub:
-    - Creates profile with github_username
-    - discord fields are null until they connect Discord
-
-    When they later connect Discord:
-    - Finds their existing profile by email or github_username
-    - Adds their Discord identity to the same profile
-
-    This is how Orchestra knows:
-    SarvyagyaPrakash (GitHub) = moonknight6006 (Discord)
+    Creates or updates a unified user profile in the database.
     """
-    filepath = "user_profiles.json"
+    from database import SessionLocal
+    from models_sql import UserProfileTable
+    import uuid
 
-    if os.path.exists(filepath):
-        with open(filepath, "r") as f:
-            profiles = json.load(f)
-    else:
-        profiles = {}
-
-    # Try to find existing profile
-    # Match by email (most reliable) or github_username
-    existing_key = None
-
-    for key, profile in profiles.items():
-        if email and profile.get("email") == email:
-            existing_key = key
-            break
-        if github_username and profile.get("github_username") == github_username:
-            existing_key = key
-            break
-        if discord_id and profile.get("discord_id") == discord_id:
-            existing_key = key
-            break
-
-    if existing_key:
-        # Update existing profile with new platform info
-        if github_username:
-            profiles[existing_key]["github_username"] = github_username
-        if github_access_token:
-            profiles[existing_key]["github_access_token"] = github_access_token
-        if discord_id:
-            profiles[existing_key]["discord_id"] = discord_id
-        if discord_username:
-            profiles[existing_key]["discord_username"] = discord_username
-        if discord_access_token:
-            profiles[existing_key]["discord_access_token"] = discord_access_token
+    db = SessionLocal()
+    try:
+        profile = None
         if email:
-            profiles[existing_key]["email"] = email
-        profiles[existing_key]["updated_at"] = datetime.now(timezone.utc).isoformat()
-        user_id = existing_key
-        print(f"[USER PROFILE] ✅ Updated profile for {existing_key}")
-    else:
-        # Create new profile
-        import uuid
+            profile = db.query(UserProfileTable).filter_by(email=email).first()
+        if not profile and github_username:
+            profile = db.query(UserProfileTable).filter_by(github_username=github_username).first()
+        if not profile and discord_id:
+            profile = db.query(UserProfileTable).filter_by(discord_id=discord_id).first()
 
-        user_id = f"usr_{str(uuid.uuid4())[:8]}"
-        profiles[user_id] = {
-            "user_id": user_id,
-            "email": email,
-            "github_username": github_username,
-            "github_access_token": github_access_token,
-            "discord_id": discord_id,
-            "discord_username": discord_username,
-            "discord_access_token": discord_access_token,
-            "created_at": datetime.now(timezone.utc).isoformat(),
-            "updated_at": datetime.now(timezone.utc).isoformat(),
+        if profile:
+            if github_username:
+                profile.github_username = github_username
+            if github_access_token:
+                profile.github_access_token = github_access_token
+            if discord_id:
+                profile.discord_id = discord_id
+            if discord_username:
+                profile.discord_username = discord_username
+            if discord_access_token:
+                profile.discord_access_token = discord_access_token
+            if email:
+                profile.email = email
+            profile.updated_at = datetime.now(timezone.utc).isoformat()
+            print(f"[USER PROFILE] ✅ Updated profile for {profile.user_id} in DB")
+        else:
+            user_id = f"usr_{str(uuid.uuid4())[:8]}"
+            profile = UserProfileTable(
+                user_id=user_id,
+                email=email,
+                github_username=github_username,
+                github_access_token=github_access_token,
+                discord_id=discord_id,
+                discord_username=discord_username,
+                discord_access_token=discord_access_token,
+                created_at=datetime.now(timezone.utc).isoformat(),
+                updated_at=datetime.now(timezone.utc).isoformat()
+            )
+            db.add(profile)
+            print(f"[USER PROFILE] ✅ Created new profile in DB: {user_id}")
+
+        db.commit()
+        # Create a dictionary to return before closing session
+        profile_dict = {
+            "user_id": profile.user_id,
+            "email": profile.email,
+            "github_username": profile.github_username,
+            "github_access_token": profile.github_access_token,
+            "discord_id": profile.discord_id,
+            "discord_username": profile.discord_username,
+            "discord_access_token": profile.discord_access_token,
+            "created_at": profile.created_at,
+            "updated_at": profile.updated_at
         }
-        print(f"[USER PROFILE] ✅ Created new profile: {user_id}")
-
-    with open(filepath, "w") as f:
-        json.dump(profiles, f, indent=2)
-
-    sys.stdout.flush()
-    return profiles[user_id]
+        return profile_dict
+    except Exception as e:
+        print(f"[USER PROFILE] ❌ Failed to save user profile: {e}")
+        db.rollback()
+        raise e
+    finally:
+        db.close()
+        sys.stdout.flush()
 
 
 def update_member_activity(actor: str, content: str, timestamp: str) -> None:
@@ -455,6 +440,54 @@ def update_member_activity(actor: str, content: str, timestamp: str) -> None:
 
     print(f"[ACTIVITY] Updated activity for {actor}: {content[:40]}")
     sys.stdout.flush()
+
+
+def sync_task_status_to_neo4j(task_id: str, new_status: str) -> None:
+    """
+    Syncs a task status update to the Neo4j Graph Database.
+    task_id can be in formats: "task_003", "task-3", "T3", etc.
+    new_status is the status value (e.g. "todo", "in_progress", "completed", "blocked").
+    """
+    import re
+    import requests
+
+    # 1. Extract the number from task_id
+    match = re.search(r"\d+", task_id)
+    if not match:
+        print(f"[NEO4J SYNC] ⚠️ Could not extract task number from ID '{task_id}'. Sync skipped.")
+        sys.stdout.flush()
+        return
+
+    task_number = str(int(match.group(0)))
+    neo4j_task_id = f"T{task_number}"
+
+    # 2. Map status to standard lowercase representation
+    status_map = {
+        "pending": "todo",
+        "todo": "todo",
+        "in_progress": "in_progress",
+        "completed": "completed",
+        "blocked": "blocked"
+    }
+    mapped_status = status_map.get(new_status.lower(), new_status.lower())
+
+    url = f"https://orchestra-ai-36zm.onrender.com/tasks/{neo4j_task_id}/status"
+    headers = {"Content-Type": "application/json"}
+    payload = {"status": mapped_status}
+
+    print(f"[NEO4J SYNC] 🔄 Syncing task {neo4j_task_id} to status '{mapped_status}'...")
+    sys.stdout.flush()
+
+    try:
+        response = requests.patch(url, json=payload, headers=headers, timeout=10)
+        if response.status_code == 200:
+            print(f"[NEO4J SYNC] ✅ Successfully synced {neo4j_task_id} to Neo4j")
+        else:
+            print(f"[NEO4J SYNC] ❌ Failed to sync {neo4j_task_id} to Neo4j: {response.status_code} - {response.text}")
+        sys.stdout.flush()
+    except Exception as e:
+        print(f"[NEO4J SYNC] ⚠️ Error syncing {neo4j_task_id} to Neo4j: {e}")
+        sys.stdout.flush()
 
 
 def initialize_tasks_file():
@@ -984,16 +1017,32 @@ async def run_daily_standup():
     print("[STANDUP BOT] Running daily standup summary check...")
     sys.stdout.flush()
 
-    users_filepath = "discord_users.json"
-    if not os.path.exists(users_filepath):
-        print("[STANDUP BOT] No discord_users.json found. Skipping.")
+    from database import SessionLocal
+    from models_sql import DiscordUserTable
+
+    db = SessionLocal()
+    try:
+        db_users = db.query(DiscordUserTable).all()
+        users_list = [
+            {
+                "discord_id": u.discord_id,
+                "discord_username": u.discord_username,
+                "access_token": u.access_token,
+                "email": u.email,
+                "connected_at": u.connected_at
+            }
+            for u in db_users
+        ]
+    finally:
+        db.close()
+
+    if not users_list:
+        print("[STANDUP BOT] No discord users found. Skipping.")
         sys.stdout.flush()
         return
 
-    with open(users_filepath, "r") as f:
-        users = json.load(f)
-
-    for discord_id, user_data in users.items():
+    for user_data in users_list:
+        discord_id = user_data.get("discord_id")
         discord_username = user_data.get("discord_username")
         print(f"[STANDUP BOT] Processing user {discord_username} ({discord_id})...")
         sys.stdout.flush()
@@ -1160,6 +1209,9 @@ def update_task_status(task_ref: str, new_status: str) -> bool:
         print(f"[STATE MACHINE] ✅ {full_task_id}: {old_status} → {new_status}")
         sys.stdout.flush()
 
+        # Sync to Neo4j Graph DB
+        sync_task_status_to_neo4j(full_task_id, new_status)
+
         # ── WEBSOCKET BROADCAST ────────────────────────────────
         # The moment a task status changes, tell every connected
         # browser about it immediately.
@@ -1260,14 +1312,17 @@ async def receive_github(request: Request):
     )
 
     # Look up this user's unique webhook secret
-    connected_users_file = "connected_users.json"
     user_secret = None
+    from database import SessionLocal
+    from models_sql import ConnectedUserTable
 
-    if os.path.exists(connected_users_file):
-        with open(connected_users_file, "r") as f:
-            users = json.load(f)
-        if sender in users:
+    db = SessionLocal()
+    try:
+        user = db.query(ConnectedUserTable).filter_by(github_username=sender).first()
+        if user:
             user_secret = generate_user_webhook_secret(sender)
+    finally:
+        db.close()
 
     # Verify signature if we have a secret for this user
     if github_signature and user_secret:
@@ -1396,7 +1451,7 @@ async def receive_figma(request: Request):
 # This ensures Member 3's UI sees the latest State Machine updates.
 # =====================================================================
 @app.get("/tasks")
-async def get_tasks(project_id: str | None = None):
+async def get_tasks(project_id: Optional[str] = None):
     from fastapi import Response
     from database import SessionLocal
     from models_sql import TaskTable
@@ -1680,7 +1735,7 @@ async def websocket_endpoint(websocket: WebSocket):
 # After approval, GitHub redirects back to /auth/github/callback
 # =====================================================================
 @app.get("/auth/github")
-async def github_login(repo: str | None = None):
+async def github_login(repo: Optional[str] = None):
     from fastapi.responses import RedirectResponse
     import urllib.parse
 
@@ -1709,7 +1764,7 @@ async def github_login(repo: str | None = None):
 # /auth/github/callbackcode=XXX&repo=username/reponame
 # =====================================================================
 @app.get("/auth/github/callback")
-async def github_callback(code: str, state: str | None = None):
+async def github_callback(code: str, state: Optional[str] = None):
     import httpx
 
     async with httpx.AsyncClient() as client:
@@ -1786,30 +1841,28 @@ async def github_callback(code: str, state: str | None = None):
 @app.get("/connected-users")
 async def get_connected_users():
     from fastapi.responses import Response
+    from database import SessionLocal
+    from models_sql import ConnectedUserTable
 
-    filepath = "connected_users.json"
-    if not os.path.exists(filepath):
-        return {"total": 0, "users": []}
-
-    with open(filepath, "r") as f:
-        users = json.load(f)
-
-    safe_users = []
-    for username, data in users.items():
-        safe_users.append(
-            {
-                "github_username": data.get("github_username"),
-                "repo": data.get("repo"),
-                "connected_at": data.get("connected_at"),
-                "webhook_registered": data.get("webhook_registered"),
-                "webhook_id": data.get("webhook_id"),
-            }
-        )
-
-    result = {"total": len(safe_users), "connected_users": safe_users}
-
-    formatted = json.dumps(result, indent=4)
-    return Response(content=formatted, media_type="application/json")
+    db = SessionLocal()
+    try:
+        db_users = db.query(ConnectedUserTable).all()
+        safe_users = []
+        for u in db_users:
+            safe_users.append(
+                {
+                    "github_username": u.github_username,
+                    "repo": u.repo,
+                    "connected_at": u.connected_at,
+                    "webhook_registered": u.webhook_registered,
+                    "webhook_id": u.webhook_id,
+                }
+            )
+        result = {"total": len(safe_users), "connected_users": safe_users}
+        formatted = json.dumps(result, indent=4)
+        return Response(content=formatted, media_type="application/json")
+    finally:
+        db.close()
 
 
 # =====================================================================
@@ -1921,7 +1974,7 @@ async def discord_callback(code: str):
         },
         "next_step": {
             "action": "Add Orchestra Bot to your Discord server",
-            "bot_invite_url": f"https://discord.com/oauth2/authorizeclient_id={DISCORD_CLIENT_ID}&permissions=84992&scope=bot",
+            "bot_invite_url": f"https://discord.com/oauth2/authorize?client_id={DISCORD_CLIENT_ID}&permissions=84992&scope=bot",
             "instructions": "Open the bot_invite_url and select your team's Discord server to add Orchestra Bot",
         },
     }
@@ -1938,31 +1991,27 @@ async def discord_callback(code: str):
 @app.get("/discord-users")
 async def get_discord_users():
     from fastapi.responses import Response
+    from database import SessionLocal
+    from models_sql import DiscordUserTable
 
-    filepath = "discord_users.json"
-
-    if not os.path.exists(filepath):
-        return {"total": 0, "users": []}
-
-    with open(filepath, "r") as f:
-        users = json.load(f)
-
-    # Never expose access tokens in API responses
-    safe_users = []
-    for discord_id, data in users.items():
-        safe_users.append(
-            {
-                "discord_id": data.get("discord_id"),
-                "discord_username": data.get("discord_username"),
-                "email": data.get("email"),
-                "connected_at": data.get("connected_at"),
-            }
-        )
-
-    result = {"total": len(safe_users), "discord_users": safe_users}
-
-    formatted = json.dumps(result, indent=4)
-    return Response(content=formatted, media_type="application/json")
+    db = SessionLocal()
+    try:
+        db_users = db.query(DiscordUserTable).all()
+        safe_users = []
+        for u in db_users:
+            safe_users.append(
+                {
+                    "discord_id": u.discord_id,
+                    "discord_username": u.discord_username,
+                    "email": u.email,
+                    "connected_at": u.connected_at,
+                }
+            )
+        result = {"total": len(safe_users), "discord_users": safe_users}
+        formatted = json.dumps(result, indent=4)
+        return Response(content=formatted, media_type="application/json")
+    finally:
+        db.close()
 
 
 # =====================================================================
@@ -1976,38 +2025,35 @@ async def get_discord_users():
 @app.get("/users")
 async def get_users():
     from fastapi.responses import Response
+    from database import SessionLocal
+    from models_sql import UserProfileTable
 
-    filepath = "user_profiles.json"
-    if not os.path.exists(filepath):
-        return {"total": 0, "users": []}
-
-    with open(filepath, "r") as f:
-        profiles = json.load(f)
-
-    # Hide access tokens from response
-    safe_profiles = []
-    for user_id, data in profiles.items():
-        safe_profiles.append(
-            {
-                "user_id": data.get("user_id"),
-                "email": data.get("email"),
-                "github_username": data.get("github_username"),
-                "discord_username": data.get("discord_username"),
-                "discord_id": data.get("discord_id"),
-                "platforms_connected": [
-                    p
-                    for p in ["github", "discord"]
-                    if data.get(f"{p}_username") or data.get(f"{p}_id")
-                ],
-                "created_at": data.get("created_at"),
-                "updated_at": data.get("updated_at"),
-            }
-        )
-
-    result = {"total": len(safe_profiles), "users": safe_profiles}
-
-    formatted = json.dumps(result, indent=4)
-    return Response(content=formatted, media_type="application/json")
+    db = SessionLocal()
+    try:
+        db_profiles = db.query(UserProfileTable).all()
+        safe_profiles = []
+        for p in db_profiles:
+            safe_profiles.append(
+                {
+                    "user_id": p.user_id,
+                    "email": p.email,
+                    "github_username": p.github_username,
+                    "discord_username": p.discord_username,
+                    "discord_id": p.discord_id,
+                    "platforms_connected": [
+                        plat
+                        for plat in ["github", "discord"]
+                        if (plat == "github" and p.github_username) or (plat == "discord" and p.discord_username)
+                    ],
+                    "created_at": p.created_at,
+                    "updated_at": p.updated_at,
+                }
+            )
+        result = {"total": len(safe_profiles), "users": safe_profiles}
+        formatted = json.dumps(result, indent=4)
+        return Response(content=formatted, media_type="application/json")
+    finally:
+        db.close()
 
 
 # =====================================================================

@@ -1,4 +1,4 @@
-from sqlalchemy import Column, String, Integer, JSON
+from sqlalchemy import Column, String, Integer, JSON, Boolean
 from database import Base
 
 
@@ -31,3 +31,35 @@ class TaskTable(Base):
     # Store simple lists as JSON inside PostgreSQL
     depends_on = Column(JSON, default=list)
     history = Column(JSON, default=list)
+
+
+class ConnectedUserTable(Base):
+    __tablename__ = "connected_users"
+    github_username = Column(String, primary_key=True, index=True)
+    repo = Column(String)
+    connected_at = Column(String)
+    webhook_registered = Column(Boolean)
+    webhook_id = Column(Integer, nullable=True)
+    access_token = Column(String)
+
+
+class DiscordUserTable(Base):
+    __tablename__ = "discord_users"
+    discord_id = Column(String, primary_key=True, index=True)
+    discord_username = Column(String)
+    access_token = Column(String)
+    email = Column(String, nullable=True)
+    connected_at = Column(String)
+
+
+class UserProfileTable(Base):
+    __tablename__ = "user_profiles"
+    user_id = Column(String, primary_key=True, index=True)
+    email = Column(String, nullable=True)
+    github_username = Column(String, nullable=True)
+    github_access_token = Column(String, nullable=True)
+    discord_id = Column(String, nullable=True)
+    discord_username = Column(String, nullable=True)
+    discord_access_token = Column(String, nullable=True)
+    created_at = Column(String)
+    updated_at = Column(String)

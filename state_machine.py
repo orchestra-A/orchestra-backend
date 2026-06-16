@@ -170,10 +170,15 @@ def save_tasks(tasks: dict[str, Task]) -> None:
             if not dt:
                 dt = TaskTable(id=t_id)
                 db.add(dt)
+                old_state = None
+            else:
+                old_state = dt.state
 
             d = task_obj.to_dict()
+            new_state = d.get("status", "pending").upper()
+
             dt.title = d.get("title")
-            dt.state = d.get("status", "pending").upper()
+            dt.state = new_state
             dt.assigned_to = d.get("assigned_to")
             dt.project_id = d.get("project_id")
             dt.order = d.get("order")
@@ -182,6 +187,14 @@ def save_tasks(tasks: dict[str, Task]) -> None:
             dt.pr_number = d.get("pr_number")
             dt.branch = d.get("branch")
             dt.history = d.get("history", [])
+
+            # If task status has changed, sync to Neo4j Graph DB
+            if old_state != new_state:
+                try:
+                    from main import sync_task_status_to_neo4j
+                    sync_task_status_to_neo4j(t_id, new_state)
+                except Exception as e:
+                    print(f"[STATE MACHINE] Error importing/calling sync_task_status_to_neo4j: {e}")
         db.commit()
     finally:
         db.close()

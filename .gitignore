@@ -33,3 +33,6 @@ discord_users.json
 # IDE configs
 .vscode/
 pyrightconfig.json
+
+# Work Log
+WORK_LOG.md
