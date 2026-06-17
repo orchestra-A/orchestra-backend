@@ -189,10 +189,19 @@ def save_tasks(tasks: dict[str, Task]) -> None:
             dt.history = d.get("history", [])
 
             # If task status has changed, sync to Neo4j Graph DB
+            # If task status has changed, sync to Neo4j Graph DB
+            # Fired in a background thread pool so it never blocks
+            # the request/response cycle, even though save_tasks()
+            # itself is synchronous.
             if old_state != new_state:
                 try:
                     from main import sync_task_status_to_neo4j
-                    sync_task_status_to_neo4j(t_id, new_state)
+                    import threading
+                    threading.Thread(
+                        target=sync_task_status_to_neo4j,
+                        args=(t_id, new_state),
+                        daemon=True
+                    ).start()
                 except Exception as e:
                     print(f"[STATE MACHINE] Error importing/calling sync_task_status_to_neo4j: {e}")
         db.commit()

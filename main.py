@@ -8,6 +8,7 @@ from fastapi.websockets import WebSocket, WebSocketDisconnect
 from typing import List, Optional
 import asyncio
 import re
+import requests
 import discord
 from discord.ext import tasks
 import hmac
@@ -442,52 +443,61 @@ def update_member_activity(actor: str, content: str, timestamp: str) -> None:
     sys.stdout.flush()
 
 
-def sync_task_status_to_neo4j(task_id: str, new_status: str) -> None:
-    """
-    Syncs a task status update to the Neo4j Graph Database.
-    task_id can be in formats: "task_003", "task-3", "T3", etc.
-    new_status is the status value (e.g. "todo", "in_progress", "completed", "blocked").
-    """
-    import re
-    import requests
+GRAPH_API_URL = os.getenv("GRAPH_API_URL", "https://orchestra-ai-36zm.onrender.com")
+INTERNAL_API_KEY = os.getenv("INTERNAL_API_KEY", "")
 
-    # 1. Extract the number from task_id
-    match = re.search(r"\d+", task_id)
-    if not match:
-        print(f"[NEO4J SYNC] ⚠️ Could not extract task number from ID '{task_id}'. Sync skipped.")
+
+def sync_task_status_to_neo4j(task_id: str, status: str) -> bool:
+    """
+    Pushes a task status update to the Neo4j-backed AI service.
+
+    WHY THIS EXISTS:
+    Postgres is the source of truth for task data. Neo4j is a
+    separate database that Clover (the AI chatbot) reads from to
+    answer questions about project status. Without this function,
+    Neo4j never finds out when a task changes — so Clover gives
+    stale answers.
+
+    WHY IT'S SYNCHRONOUS (uses requests, not httpx):
+    The 'requests' library blocks the entire thread while waiting
+    for a response. Since state_machine.py calls this from inside
+    a synchronous function (save_tasks), we keep this function
+    synchronous too. The async wrapping happens at the call site
+    using asyncio.to_thread(), which runs this blocking function
+    in a separate thread so it doesn't freeze the main server.
+
+    Returns True if Neo4j was updated successfully, False otherwise.
+    Never raises — a sync failure should never crash the State Machine.
+    """
+    if not GRAPH_API_URL or not INTERNAL_API_KEY:
+        print("[GRAPH SYNC] ⚠️ Missing GRAPH_API_URL or INTERNAL_API_KEY — skipping sync")
         sys.stdout.flush()
-        return
+        return False
 
-    task_number = str(int(match.group(0)))
-    neo4j_task_id = f"T{task_number}"
-
-    # 2. Map status to standard lowercase representation
-    status_map = {
-        "pending": "todo",
-        "todo": "todo",
-        "in_progress": "in_progress",
-        "completed": "completed",
-        "blocked": "blocked"
-    }
-    mapped_status = status_map.get(new_status.lower(), new_status.lower())
-
-    url = f"https://orchestra-ai-36zm.onrender.com/tasks/{neo4j_task_id}/status"
-    headers = {"Content-Type": "application/json"}
-    payload = {"status": mapped_status}
-
-    print(f"[NEO4J SYNC] 🔄 Syncing task {neo4j_task_id} to status '{mapped_status}'...")
-    sys.stdout.flush()
+    url = f"{GRAPH_API_URL}/tasks/{task_id}/status"
 
     try:
-        response = requests.patch(url, json=payload, headers=headers, timeout=10)
+        response = requests.patch(
+            url,
+            json={"status": status},
+            headers={"x-api-key": INTERNAL_API_KEY},
+            timeout=10
+        )
+
         if response.status_code == 200:
-            print(f"[NEO4J SYNC] ✅ Successfully synced {neo4j_task_id} to Neo4j")
+            print(f"[GRAPH SYNC] ✅ Neo4j updated: {task_id} → {status}")
+            sys.stdout.flush()
+            return True
         else:
-            print(f"[NEO4J SYNC] ❌ Failed to sync {neo4j_task_id} to Neo4j: {response.status_code} - {response.text}")
+            print(f"[GRAPH SYNC] ❌ Neo4j sync failed for {task_id}: "
+                  f"HTTP {response.status_code} — {response.text}")
+            sys.stdout.flush()
+            return False
+
+    except requests.exceptions.RequestException as e:
+        print(f"[GRAPH SYNC] ❌ Network error syncing {task_id} to Neo4j: {e}")
         sys.stdout.flush()
-    except Exception as e:
-        print(f"[NEO4J SYNC] ⚠️ Error syncing {neo4j_task_id} to Neo4j: {e}")
-        sys.stdout.flush()
+        return False
 
 
 def initialize_tasks_file():
