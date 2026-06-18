@@ -14,7 +14,7 @@ if DATABASE_URL and DATABASE_URL.startswith("postgres://"):
 
 # Connect to database
 if DATABASE_URL.startswith("sqlite"):
-    engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False})
+    engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False, "timeout": 30})
 else:
     engine = create_engine(DATABASE_URL)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)

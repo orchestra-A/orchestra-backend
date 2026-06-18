@@ -57,6 +57,42 @@ async def startup_event():
     print("[STARTUP] Database tables verified/created.")
     sys.stdout.flush()
 
+    # Seed TaskTable from tasks.json if TaskTable is empty
+    from database import SessionLocal
+    from models_sql import TaskTable
+    db = SessionLocal()
+    try:
+        if db.query(TaskTable).count() == 0:
+            print("[STARTUP] TaskTable is empty. Seeding from tasks.json...")
+            sys.stdout.flush()
+            # If tasks.json doesn't exist, initialize it first
+            initialize_tasks_file()
+            with open("tasks.json", "r") as f:
+                tdata = json.load(f)
+            for t in tdata.get("tasks", []):
+                new_db_task = TaskTable(
+                    id=t["id"],
+                    title=t.get("title", "Untitled"),
+                    state=t.get("status", "pending").upper(),
+                    assigned_to=t.get("assigned_to"),
+                    project_id=t.get("project_id"),
+                    order=t.get("order"),
+                    created_at=t.get("created_at"),
+                    depends_on=t.get("depends_on", []),
+                    history=t.get("history", [])
+                )
+                db.add(new_db_task)
+            db.commit()
+            print("[STARTUP] TaskTable seeded successfully.")
+        else:
+            print("[STARTUP] TaskTable already contains data, skipping seeding.")
+    except Exception as e:
+        print(f"[STARTUP] Error seeding TaskTable: {e}")
+        db.rollback()
+    finally:
+        db.close()
+        sys.stdout.flush()
+
     asyncio.create_task(start_discord_bot())
     print("[STARTUP] Discord bot task created")
     sys.stdout.flush()
@@ -884,101 +920,157 @@ def get_user_standup_data(member_username: str):
     in_progress = []
     task_ids = []
 
-    tasks_filepath = "tasks.json"
-    if not os.path.exists(tasks_filepath):
-        return completed_yesterday, in_progress, task_ids
+    from database import SessionLocal
+    from models_sql import EventTable, TaskTable
 
-    with open(tasks_filepath, "r") as f:
-        tasks_data = json.load(f)
-
-    events_filepath = "events.json"
+    db = SessionLocal()
     recent_task_ids = set()
     now = datetime.now(timezone.utc)
     yesterday = now - timedelta(days=1)
 
-    if os.path.exists(events_filepath):
-        try:
-            with open(events_filepath, "r") as f:
-                events = json.load(f)
-            for event in events:
-                event_time_str = event.get("timestamp")
-                if event_time_str:
+    try:
+        events = db.query(EventTable).all()
+        for event in events:
+            event_time_str = event.timestamp
+            if event_time_str:
+                try:
                     event_time = datetime.fromisoformat(
                         event_time_str.replace("Z", "+00:00")
                     )
                     if event_time >= yesterday:
-                        if users_match(event.get("actor"), member_username):
-                            summary = event.get("action_summary", "")
+                        if users_match(event.actor, member_username):
+                            summary = event.action_summary or ""
                             refs = extract_task_references(summary)
                             for ref in refs:
                                 recent_task_ids.add(f"task_{ref.zfill(3)}")
 
-                            commits = event.get("raw_metadata", {}).get("commits", [])
+                            raw_meta = event.raw_metadata or {}
+                            if isinstance(raw_meta, str):
+                                try:
+                                    raw_meta = json.loads(raw_meta)
+                                except Exception:
+                                    raw_meta = {}
+                            commits = raw_meta.get("commits", [])
                             for commit in commits:
                                 commit_msg = commit.get("message", "")
                                 refs = extract_task_references(commit_msg)
                                 for ref in refs:
                                     recent_task_ids.add(f"task_{ref.zfill(3)}")
-        except Exception as e:
-            print(f"[STANDUP BOT] Error reading events.json: {e}")
-            sys.stdout.flush()
+                except Exception:
+                    pass
+    except Exception as e:
+        print(f"[STANDUP BOT] Error reading EventTable: {e}")
+        sys.stdout.flush()
 
-    for task in tasks_data.get("tasks", []):
-        task_id = task["id"]
-        assigned = task.get("assigned_to")
+    try:
+        db_tasks = db.query(TaskTable).all()
+        for task in db_tasks:
+            task_id = task.id
+            assigned = task.assigned_to
 
-        is_assigned = users_match(assigned, member_username)
-        is_recent_activity = task_id in recent_task_ids
+            is_assigned = users_match(assigned, member_username)
+            is_recent_activity = task_id in recent_task_ids
 
-        if is_assigned or is_recent_activity:
-            status = task.get("status", "").lower()
-            if status == "completed":
-                history = task.get("history", [])
-                updated_at_str = (
-                    history[-1].get("timestamp") if history else task.get("created_at")
-                )
-                is_completed_yesterday = False
-                if updated_at_str:
-                    try:
-                        updated_at = datetime.fromisoformat(
-                            updated_at_str.replace("Z", "+00:00")
-                        )
-                        if updated_at >= yesterday:
-                            is_completed_yesterday = True
-                    except Exception:
-                        pass
-                if is_completed_yesterday or is_recent_activity:
-                    completed_yesterday.append(task)
+            if is_assigned or is_recent_activity:
+                status = (task.state or "").lower()
+
+                task_dict = {
+                    "id": task.id,
+                    "title": task.title,
+                    "status": status,
+                    "assigned_to": task.assigned_to,
+                    "project_id": task.project_id,
+                    "order": task.order,
+                    "depends_on": task.depends_on,
+                    "created_at": task.created_at,
+                    "history": task.history,
+                }
+
+                if status == "completed":
+                    history = task.history or []
+                    updated_at_str = None
+                    if history:
+                        status_changes = [h for h in history if h.get("type") == "STATUS_CHANGE" and h.get("to") == "completed"]
+                        if status_changes:
+                            updated_at_str = status_changes[-1].get("timestamp")
+                    if not updated_at_str:
+                        updated_at_str = task.created_at
+
+                    is_completed_yesterday = False
+                    if updated_at_str:
+                        try:
+                            updated_at = datetime.fromisoformat(
+                                updated_at_str.replace("Z", "+00:00")
+                            )
+                            if updated_at >= yesterday:
+                                is_completed_yesterday = True
+                        except Exception:
+                            pass
+                    if is_completed_yesterday or is_recent_activity:
+                        completed_yesterday.append(task_dict)
+                        task_ids.append(task_id)
+                elif status == "in_progress":
+                    in_progress.append(task_dict)
                     task_ids.append(task_id)
-            elif status == "in_progress":
-                in_progress.append(task)
-                task_ids.append(task_id)
+    except Exception as e:
+        print(f"[STANDUP BOT] Error reading TaskTable: {e}")
+        sys.stdout.flush()
+    finally:
+        db.close()
 
     return completed_yesterday, in_progress, task_ids
 
 
 async def confirm_standup_tasks(task_ids: list, member_name: str):
-    filepath = "tasks.json"
-    if not os.path.exists(filepath):
-        return
+    from database import SessionLocal
+    from models_sql import TaskTable
+    from sqlalchemy.orm.attributes import flag_modified
 
-    with open(filepath, "r") as f:
-        data = json.load(f)
-
+    db = SessionLocal()
     updated_tasks = []
-    for task in data.get("tasks", []):
-        if task["id"] in task_ids:
-            task["confirmed"] = True
-            task["updated_at"] = datetime.now(timezone.utc).isoformat()
-            updated_tasks.append(task["id"])
+    try:
+        for t_id in task_ids:
+            task = db.query(TaskTable).filter(TaskTable.id == t_id).first()
+            if task:
+                if not task.history:
+                    task.history = []
+                task.history.append({
+                    "type": "STANDUP_CONFIRMED",
+                    "actor": member_name,
+                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                    "message": "Standup task confirmation"
+                })
+                flag_modified(task, "history")
+                updated_tasks.append(t_id)
+        if updated_tasks:
+            db.commit()
+            print(f"[STANDUP BOT] ✅ Confirmed tasks in DB for {member_name}: {updated_tasks}")
+            sys.stdout.flush()
+    except Exception as e:
+        print(f"[STANDUP BOT] Error confirming tasks in DB: {e}")
+        db.rollback()
+    finally:
+        db.close()
+
+    filepath = "tasks.json"
+    if os.path.exists(filepath):
+        try:
+            with open(filepath, "r") as f:
+                data = json.load(f)
+            json_updated = False
+            for task in data.get("tasks", []):
+                if task["id"] in task_ids:
+                    task["confirmed"] = True
+                    task["updated_at"] = datetime.now(timezone.utc).isoformat()
+                    json_updated = True
+            if json_updated:
+                with open(filepath, "w") as f:
+                    json.dump(data, f, indent=2)
+        except Exception as e:
+            print(f"[STANDUP BOT] Error writing to tasks.json in confirm_standup_tasks: {e}")
+            sys.stdout.flush()
 
     if updated_tasks:
-        with open(filepath, "w") as f:
-            json.dump(data, f, indent=2)
-
-        print(f"[STANDUP BOT] ✅ Confirmed tasks for {member_name}: {updated_tasks}")
-        sys.stdout.flush()
-
         try:
             await manager.broadcast(
                 {
@@ -1091,16 +1183,30 @@ def log_webhook_payload(platform: str, payload: dict) -> None:
 
 
 def save_normalized_event(event: NormalizedEvent) -> None:
-    filepath = "events.json"
-    if os.path.exists(filepath):
-        with open(filepath, "r") as f:
-            events = json.load(f)
-    else:
-        events = []
-    events.append(event.model_dump())
-    with open(filepath, "w") as f:
-        json.dump(events, f, indent=2)
-    print(f"[SAVED] Normalized event saved (total: {len(events)})")
+    from database import SessionLocal
+    from models_sql import EventTable
+
+    db = SessionLocal()
+    try:
+        new_event = EventTable(
+            id=event.id,
+            platform=event.platform,
+            event_type=event.event_type,
+            actor=event.actor,
+            timestamp=event.timestamp,
+            repo=event.repo,
+            channel=event.channel,
+            action_summary=event.action_summary,
+            raw_metadata=event.raw_metadata,
+        )
+        db.add(new_event)
+        db.commit()
+        print(f"[SAVED] Normalized event saved to database")
+    except Exception as e:
+        print(f"[SAVED] Error saving event to database: {e}")
+        db.rollback()
+    finally:
+        db.close()
     sys.stdout.flush()
 
 
@@ -1130,8 +1236,8 @@ def extract_task_references(commit_message: str) -> list:
     Returns a list of task IDs found in the message.
     """
     patterns = [
-        r"(:fixes|closes|resolves)\s+task[_\s#]+(\d+)",
-        r"(:fixes|closes|resolves)\s+#(\d+)",
+        r"(?::fixes|closes|resolves)\s+task[_\s#]+(\d+)",
+        r"(?::fixes|closes|resolves)\s+#(\d+)",
         r"task[_\s#]+(\d+)",
     ]
     found = []
@@ -1309,8 +1415,20 @@ async def receive_github(request: Request):
     finally:
         db.close()
 
-    # Verify signature if we have a secret for this user
-    if github_signature and user_secret:
+    # Enforce signature verification if GITHUB_WEBHOOK_SECRET_KEY is configured
+    if GITHUB_WEBHOOK_SECRET_KEY and GITHUB_WEBHOOK_SECRET_KEY != "default_secret":
+        if not user_secret:
+            from fastapi.responses import JSONResponse
+            print(f"[GITHUB] ❌ Unauthorized sender: {sender} is not registered")
+            sys.stdout.flush()
+            return JSONResponse(status_code=401, content={"error": "Unauthorized sender"})
+
+        if not github_signature:
+            from fastapi.responses import JSONResponse
+            print(f"[GITHUB] ❌ Missing signature header for {sender}")
+            sys.stdout.flush()
+            return JSONResponse(status_code=401, content={"error": "Missing signature"})
+
         expected_signature = (
             "sha256="
             + hmac.new(user_secret.encode(), raw_body, hashlib.sha256).hexdigest()
@@ -1489,15 +1607,29 @@ async def get_graph():
 # =====================================================================
 @app.get("/tasks/{task_id}")
 async def get_single_task(task_id: str):
-    filepath = "tasks.json"
-    if not os.path.exists(filepath):
-        return {"error": "tasks.json not found"}
-    with open(filepath, "r") as f:
-        data = json.load(f)
-    for task in data.get("tasks", []):
-        if task["id"] == task_id:
-            return task
-    return {"error": "Task not found"}
+    from database import SessionLocal
+    from models_sql import TaskTable
+
+    db = SessionLocal()
+    try:
+        t = db.query(TaskTable).filter(TaskTable.id == task_id).first()
+        if t:
+            return {
+                "id": t.id,
+                "title": t.title,
+                "status": t.state.lower() if t.state else "todo",
+                "assigned_to": t.assigned_to,
+                "project_id": t.project_id,
+                "order": t.order,
+                "depends_on": t.depends_on,
+                "created_at": t.created_at,
+                "pr_number": t.pr_number,
+                "branch": t.branch,
+                "history": t.history,
+            }
+        return {"error": "Task not found"}
+    finally:
+        db.close()
 
 
 @app.post("/tasks")
@@ -1508,23 +1640,62 @@ async def create_new_task(request: Request):
     if not task_id:
         return {"error": "'id' field required"}
 
+    from database import SessionLocal
+    from models_sql import TaskTable
+
+    created_at = datetime.now(timezone.utc).isoformat()
+
+    # Save to SQL database
+    db = SessionLocal()
+    try:
+        exists = db.query(TaskTable).filter(TaskTable.id == task_id).first()
+        if not exists:
+            new_db_task = TaskTable(
+                id=task_id,
+                title=title,
+                state="TODO",
+                created_at=created_at,
+                depends_on=[],
+                history=[]
+            )
+            db.add(new_db_task)
+            db.commit()
+    except Exception as e:
+        print(f"[API] Error saving new task to database: {e}")
+        db.rollback()
+    finally:
+        db.close()
+
+    # Save to legacy tasks.json for compatibility
     filepath = "tasks.json"
     if not os.path.exists(filepath):
         initialize_tasks_file()
-    with open(filepath, "r") as f:
-        data = json.load(f)
+    try:
+        with open(filepath, "r") as f:
+            data = json.load(f)
 
-    new_task = {
-        "id": task_id,
-        "title": title,
-        "status": "todo",
-        "created_at": datetime.now(timezone.utc).isoformat(),
-    }
-    data["tasks"].append(new_task)
-    data["total"] = len(data["tasks"])
+        if not any(t["id"] == task_id for t in data.get("tasks", [])):
+            new_task = {
+                "id": task_id,
+                "title": title,
+                "status": "todo",
+                "created_at": created_at,
+            }
+            data["tasks"].append(new_task)
+            data["total"] = len(data["tasks"])
 
-    with open(filepath, "w") as f:
-        json.dump(data, f, indent=2)
+            with open(filepath, "w") as f:
+                json.dump(data, f, indent=2)
+        else:
+            new_task = next(t for t in data["tasks"] if t["id"] == task_id)
+    except Exception as e:
+        print(f"[API] Error writing to tasks.json: {e}")
+        new_task = {
+            "id": task_id,
+            "title": title,
+            "status": "todo",
+            "created_at": created_at,
+        }
 
     # Broadcast new task creation
     try:
@@ -1533,7 +1704,7 @@ async def create_new_task(request: Request):
                 {
                     "type": "task_created",
                     "task": new_task,
-                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                    "timestamp": created_at,
                 }
             )
         )
@@ -2094,6 +2265,76 @@ async def get_discord_activity():
 
     formatted = json.dumps(result, indent=4)
     return Response(content=formatted, media_type="application/json")
+
+
+# =====================================================================
+# Route 10 — Discord & GitHub Commit Intel (GET /commit-intel)
+# =====================================================================
+# Correlates Discord active members' latest messages with actual GitHub
+# commit/PR activity, so the team can see what is being discussed in
+# Discord vs what commits are actually happening in one place.
+# =====================================================================
+@app.get("/commit-intel")
+async def get_commit_intel():
+    from fastapi.responses import Response
+    from database import SessionLocal
+    from models_sql import EventTable
+    import re
+
+    filepath = "discord_activity.json"
+    intel_list = []
+
+    db = SessionLocal()
+    try:
+        # Fetch GitHub events to correlate activity
+        db_events = db.query(EventTable).filter(EventTable.platform == "github").all()
+        # Sort events by timestamp descending
+        sorted_events = sorted(db_events, key=lambda x: x.timestamp or "", reverse=True)
+
+        if os.path.exists(filepath):
+            with open(filepath, "r") as f:
+                activity = json.load(f)
+        else:
+            activity = {}
+
+        for actor, data in activity.items():
+            discord_last_message = data.get("latest_message") or ""
+            discord_last_seen = data.get("last_seen") or ""
+
+            # Check if this actor appears in any github event
+            matching_summaries = []
+            github_actor_match = False
+
+            for e in sorted_events:
+                if e.actor == actor:
+                    github_actor_match = True
+                    if len(matching_summaries) < 3:
+                        matching_summaries.append(e.action_summary)
+
+            # Extract task mentions (task-\d+ or T\d{3})
+            task_mentions = re.findall(r"(task-\d+|T\d{3})", discord_last_message, re.IGNORECASE)
+
+            intel_list.append(
+                {
+                    "member": actor,
+                    "discord_last_message": discord_last_message,
+                    "discord_last_seen": discord_last_seen,
+                    "github_actor_match": github_actor_match,
+                    "recent_github_activity": matching_summaries,
+                    "task_mentions_in_discord": task_mentions,
+                }
+            )
+
+        result = {
+            "total_members": len(intel_list),
+            "generated_at": datetime.now(timezone.utc).isoformat(),
+            "intel": intel_list,
+        }
+
+        formatted = json.dumps(result, indent=4)
+        return Response(content=formatted, media_type="application/json")
+    finally:
+        db.close()
 
 
 @app.get("/test/standup")

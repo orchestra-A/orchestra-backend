@@ -233,32 +233,34 @@ def create_task(task_id: str, title: str) -> Task:
 def extract_task_id_from_branch(branch: str) -> Optional[str]:
     """
     Extracts task ID from branch name.
+    Normalizes it to "task_00X" format to match DB.
     Examples:
-      "feature/task-12"  → "task-12"
-      "fix/task-7-login" → "task-7"
+      "feature/task-12"  → "task_012"
+      "fix/task-7-login" → "task_007"
       "main"             → None
     """
     import re
 
-    match = re.search(r"task-(\d+)", branch, re.IGNORECASE)
+    match = re.search(r"task[-_](\d+)", branch, re.IGNORECASE)
     if match:
-        return f"task-{match.group(1)}"
+        return f"task_{match.group(1).zfill(3)}"
     return None
 
 
 def extract_task_id_from_pr_title(title: str) -> Optional[str]:
     """
     Extracts task ID from PR title.
+    Normalizes it to "task_00X" format to match DB.
     Examples:
-      "Fixes task-12: Add normalizer"   → "task-12"
-      "Closes task-7"                   → "task-7"
+      "Fixes task-12: Add normalizer"   → "task_012"
+      "Closes task-7"                   → "task_007"
       "Random PR title"                 → None
     """
     import re
 
-    match = re.search(r"task-(\d+)", title, re.IGNORECASE)
+    match = re.search(r"task[-_](\d+)", title, re.IGNORECASE)
     if match:
-        return f"task-{match.group(1)}"
+        return f"task_{match.group(1).zfill(3)}"
     return None
 
 
