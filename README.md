@@ -7,8 +7,9 @@ This repository contains the centralized API server for the Orchestra project, h
 The backend is composed of two primary tracks working in tandem:
 
 ### 1. Infrastructure Layer
-Responsible for core server hosting, API endpoint routing, and receiving incoming webhook events securely.
+Responsible for core server hosting, API endpoint routing, securely managing user identities, and receiving incoming webhook events.
 - Hosted permanently on Render (`https://orchestra-backend-2v5a.onrender.com`).
+- Manages user profiles and platform integrations securely via a robust PostgreSQL relational database, strictly adhering to the AI Team's Data Contracts.
 - Automatically registers GitHub webhooks for new users using OAuth.
 - Catches live webhook events via dedicated endpoints (`/webhook/github`, `/webhook/discord`, `/webhook/figma`).
 - Validates payload security (e.g., verifying `X-Hub-Signature-256` HMAC hashes for GitHub).
@@ -19,7 +20,7 @@ Responsible for core server hosting, API endpoint routing, and receiving incomin
 Responsible for transforming raw, multi-platform events into a clean, uniform format.
 - Parses incoming JSON payloads and extracts crucial metadata (branch, commits, sender).
 - Routes messy data through the **Semantic Data Normalizer** (`normalizer.py`).
-- Persists standardized timeline blocks into a live serverless PostgreSQL database via SQLAlchemy, accessible via the `GET /events` endpoint.
+    - Persists standardized timeline blocks into a live serverless PostgreSQL database via SQLAlchemy, accessible via the `GET /events` endpoint.
 
 ---
 
@@ -71,4 +72,5 @@ uvicorn main:app --reload --port 8000
 
 - **Week 1:** Complete (Infrastructure boilerplate & Webhooks).
 - **Week 2:** Complete (Data Pipeline Normalizer).
-- **Week 3:** Complete (Task REST Endpoints, WebSocket Integration, Background Schedulers, and PostgreSQL Migration).
+- **Week 3:** Complete (Task REST Endpoints, WebSocket Integration, Background Schedulers).
+- **Week 4:** Complete (Full PostgreSQL Migration for tasks, events, user profiles, and dynamic platform integrations).
