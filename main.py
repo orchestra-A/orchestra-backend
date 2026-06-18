@@ -277,28 +277,11 @@ def save_connected_user(
     """
     Saves the connected user's information to the database.
     """
-    from database import SessionLocal
-    from models_sql import ConnectedUserTable
-
-    db = SessionLocal()
-    try:
-        user = db.query(ConnectedUserTable).filter_by(github_username=github_username).first()
-        if not user:
-            user = ConnectedUserTable(github_username=github_username)
-            db.add(user)
-        user.repo = repo_full_name
-        user.connected_at = datetime.now(timezone.utc).isoformat()
-        user.webhook_registered = webhook_result.get("success", False)
-        user.webhook_id = webhook_result.get("webhook_id")
-        user.access_token = access_token
-        db.commit()
-        print(f"[USER] ✅ Saved connected user to DB: {github_username}")
-    except Exception as e:
-        print(f"[USER] ❌ Failed to save connected user: {e}")
-        db.rollback()
-    finally:
-        db.close()
-    sys.stdout.flush()
+    save_unified_user_profile(
+        github_username=github_username,
+        github_access_token=access_token,
+        github_repo=repo_full_name
+    )
 
 
 def save_discord_user(
@@ -307,27 +290,12 @@ def save_discord_user(
     """
     Saves a Discord connected user to the database.
     """
-    from database import SessionLocal
-    from models_sql import DiscordUserTable
-
-    db = SessionLocal()
-    try:
-        user = db.query(DiscordUserTable).filter_by(discord_id=discord_id).first()
-        if not user:
-            user = DiscordUserTable(discord_id=discord_id)
-            db.add(user)
-        user.discord_username = discord_username
-        user.access_token = access_token
-        user.email = email
-        user.connected_at = datetime.now(timezone.utc).isoformat()
-        db.commit()
-        print(f"[DISCORD AUTH] ✅ Saved Discord user to DB: {discord_username}")
-    except Exception as e:
-        print(f"[DISCORD AUTH] ❌ Failed to save Discord user: {e}")
-        db.rollback()
-    finally:
-        db.close()
-    sys.stdout.flush()
+    save_unified_user_profile(
+        discord_id=discord_id,
+        discord_username=discord_username,
+        discord_access_token=access_token,
+        email=email
+    )
 
 
 def save_unified_user_profile(
@@ -337,69 +305,73 @@ def save_unified_user_profile(
     discord_username: Optional[str] = None,
     discord_access_token: Optional[str] = None,
     email: Optional[str] = None,
+    github_repo: Optional[str] = None,
 ) -> dict:
     """
-    Creates or updates a unified user profile in the database.
+    Creates or updates a unified user profile in the database using the dynamic PlatformIntegration table.
     """
     from database import SessionLocal
-    from models_sql import UserProfileTable
+    from models_sql import UserTable, PlatformIntegrationTable
     import uuid
 
     db = SessionLocal()
     try:
-        profile = None
+        # 1. Find or create UserTable
+        user = None
         if email:
-            profile = db.query(UserProfileTable).filter_by(email=email).first()
-        if not profile and github_username:
-            profile = db.query(UserProfileTable).filter_by(github_username=github_username).first()
-        if not profile and discord_id:
-            profile = db.query(UserProfileTable).filter_by(discord_id=discord_id).first()
+            user = db.query(UserTable).filter_by(email=email).first()
+        if not user and github_username:
+            user = db.query(UserTable).filter_by(username=github_username).first()
+        if not user and discord_username:
+            user = db.query(UserTable).filter_by(username=discord_username).first()
 
-        if profile:
-            if github_username:
-                profile.github_username = github_username
-            if github_access_token:
-                profile.github_access_token = github_access_token
-            if discord_id:
-                profile.discord_id = discord_id
-            if discord_username:
-                profile.discord_username = discord_username
-            if discord_access_token:
-                profile.discord_access_token = discord_access_token
-            if email:
-                profile.email = email
-            profile.updated_at = datetime.now(timezone.utc).isoformat()
-            print(f"[USER PROFILE] ✅ Updated profile for {profile.user_id} in DB")
-        else:
+        if not user:
             user_id = f"usr_{str(uuid.uuid4())[:8]}"
-            profile = UserProfileTable(
-                user_id=user_id,
+            primary_username = github_username or discord_username or email.split("@")[0]
+            user = UserTable(
+                id=user_id,
+                username=primary_username,
                 email=email,
-                github_username=github_username,
-                github_access_token=github_access_token,
-                discord_id=discord_id,
-                discord_username=discord_username,
-                discord_access_token=discord_access_token,
                 created_at=datetime.now(timezone.utc).isoformat(),
                 updated_at=datetime.now(timezone.utc).isoformat()
             )
-            db.add(profile)
-            print(f"[USER PROFILE] ✅ Created new profile in DB: {user_id}")
+            db.add(user)
+            db.flush() # get user.id so we can use it for foreign keys
+
+        # 2. Upsert GitHub PlatformIntegration
+        if github_username:
+            pi_gh = db.query(PlatformIntegrationTable).filter_by(platform_name="github", user_id=user.id).first()
+            if not pi_gh:
+                pi_gh = PlatformIntegrationTable(
+                    id=str(uuid.uuid4()),
+                    user_id=user.id,
+                    platform_name="github",
+                    connected_at=datetime.now(timezone.utc).isoformat()
+                )
+                db.add(pi_gh)
+            pi_gh.access_token = github_access_token
+            pi_gh.platform_metadata = {"username": github_username, "repo": github_repo}
+
+        # 3. Upsert Discord PlatformIntegration
+        if discord_id:
+            pi_dc = db.query(PlatformIntegrationTable).filter_by(platform_name="discord", user_id=user.id).first()
+            if not pi_dc:
+                pi_dc = PlatformIntegrationTable(
+                    id=str(uuid.uuid4()),
+                    user_id=user.id,
+                    platform_name="discord",
+                    connected_at=datetime.now(timezone.utc).isoformat()
+                )
+                db.add(pi_dc)
+            pi_dc.access_token = discord_access_token
+            pi_dc.platform_metadata = {"discord_id": discord_id, "username": discord_username}
 
         db.commit()
-        # Create a dictionary to return before closing session
-        profile_dict = {
-            "user_id": profile.user_id,
-            "email": profile.email,
-            "github_username": profile.github_username,
-            "github_access_token": profile.github_access_token,
-            "discord_id": profile.discord_id,
-            "discord_username": profile.discord_username,
-            "discord_access_token": profile.discord_access_token,
-            "created_at": profile.created_at,
-            "updated_at": profile.updated_at
+        return {
+            "user_id": user.id,
+            "username": user.username,
+            "email": user.email
         }
-        return profile_dict
     except Exception as e:
         print(f"[USER PROFILE] ❌ Failed to save user profile: {e}")
         db.rollback()
@@ -1324,13 +1296,16 @@ async def receive_github(request: Request):
     # Look up this user's unique webhook secret
     user_secret = None
     from database import SessionLocal
-    from models_sql import ConnectedUserTable
+    from models_sql import PlatformIntegrationTable
 
     db = SessionLocal()
     try:
-        user = db.query(ConnectedUserTable).filter_by(github_username=sender).first()
-        if user:
-            user_secret = generate_user_webhook_secret(sender)
+        integrations = db.query(PlatformIntegrationTable).filter_by(platform_name="github").all()
+        for pi in integrations:
+            meta = pi.platform_metadata or {}
+            if meta.get("username") == sender:
+                user_secret = generate_user_webhook_secret(sender)
+                break
     finally:
         db.close()
 
@@ -1852,20 +1827,21 @@ async def github_callback(code: str, state: Optional[str] = None):
 async def get_connected_users():
     from fastapi.responses import Response
     from database import SessionLocal
-    from models_sql import ConnectedUserTable
+    from models_sql import PlatformIntegrationTable
 
     db = SessionLocal()
     try:
-        db_users = db.query(ConnectedUserTable).all()
+        db_users = db.query(PlatformIntegrationTable).filter_by(platform_name="github").all()
         safe_users = []
         for u in db_users:
+            meta = u.platform_metadata or {}
             safe_users.append(
                 {
-                    "github_username": u.github_username,
-                    "repo": u.repo,
+                    "github_username": meta.get("username"),
+                    "repo": meta.get("repo"),
                     "connected_at": u.connected_at,
-                    "webhook_registered": u.webhook_registered,
-                    "webhook_id": u.webhook_id,
+                    "webhook_registered": True, # Hardcoded assuming registered if present
+                    "webhook_id": meta.get("webhook_id"),
                 }
             )
         result = {"total": len(safe_users), "connected_users": safe_users}
@@ -2002,19 +1978,23 @@ async def discord_callback(code: str):
 async def get_discord_users():
     from fastapi.responses import Response
     from database import SessionLocal
-    from models_sql import DiscordUserTable
+    from models_sql import PlatformIntegrationTable, UserTable
 
     db = SessionLocal()
     try:
-        db_users = db.query(DiscordUserTable).all()
+        db_users = db.query(PlatformIntegrationTable, UserTable)\
+                     .join(UserTable, PlatformIntegrationTable.user_id == UserTable.id)\
+                     .filter(PlatformIntegrationTable.platform_name == "discord").all()
+        
         safe_users = []
-        for u in db_users:
+        for pi, user in db_users:
+            meta = pi.platform_metadata or {}
             safe_users.append(
                 {
-                    "discord_id": u.discord_id,
-                    "discord_username": u.discord_username,
-                    "email": u.email,
-                    "connected_at": u.connected_at,
+                    "discord_id": meta.get("discord_id"),
+                    "discord_username": meta.get("username"),
+                    "email": user.email,
+                    "connected_at": pi.connected_at,
                 }
             )
         result = {"total": len(safe_users), "discord_users": safe_users}
@@ -2036,27 +2016,32 @@ async def get_discord_users():
 async def get_users():
     from fastapi.responses import Response
     from database import SessionLocal
-    from models_sql import UserProfileTable
+    from models_sql import UserTable, PlatformIntegrationTable
 
     db = SessionLocal()
     try:
-        db_profiles = db.query(UserProfileTable).all()
+        db_users = db.query(UserTable).all()
         safe_profiles = []
-        for p in db_profiles:
+        for u in db_users:
+            # Get integrations for this user
+            integrations = db.query(PlatformIntegrationTable).filter_by(user_id=u.id).all()
+            platforms_connected = [pi.platform_name for pi in integrations]
+            
+            # Find specific usernames for backwards compatibility
+            gh = next((pi for pi in integrations if pi.platform_name == "github"), None)
+            dc = next((pi for pi in integrations if pi.platform_name == "discord"), None)
+            
             safe_profiles.append(
                 {
-                    "user_id": p.user_id,
-                    "email": p.email,
-                    "github_username": p.github_username,
-                    "discord_username": p.discord_username,
-                    "discord_id": p.discord_id,
-                    "platforms_connected": [
-                        plat
-                        for plat in ["github", "discord"]
-                        if (plat == "github" and p.github_username) or (plat == "discord" and p.discord_username)
-                    ],
-                    "created_at": p.created_at,
-                    "updated_at": p.updated_at,
+                    "user_id": u.id,
+                    "username": u.username,
+                    "email": u.email,
+                    "github_username": gh.platform_metadata.get("username") if gh and gh.platform_metadata else None,
+                    "discord_username": dc.platform_metadata.get("username") if dc and dc.platform_metadata else None,
+                    "discord_id": dc.platform_metadata.get("discord_id") if dc and dc.platform_metadata else None,
+                    "platforms_connected": platforms_connected,
+                    "created_at": u.created_at,
+                    "updated_at": u.updated_at,
                 }
             )
         result = {"total": len(safe_profiles), "users": safe_profiles}

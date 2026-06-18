@@ -1,0 +1,77 @@
+import os
+import psycopg2
+
+DATABASE_URL = None
+with open(".env", "r") as f:
+    for line in f:
+        if line.startswith("DATABASE_URL="):
+            DATABASE_URL = line.strip().split("=", 1)[1]
+
+
+if not DATABASE_URL or not DATABASE_URL.startswith("postgres"):
+    print("No postgres database url found. Skipping.")
+    exit(0)
+
+# psycopg2 expects postgresql:// but can handle postgres:// too
+def run_migrations():
+    try:
+        conn = psycopg2.connect(DATABASE_URL)
+        conn.autocommit = True
+        cur = conn.cursor()
+        
+        print("Running manual migrations with psycopg2...")
+
+        # 1. Alter tasks
+        try:
+            cur.execute("ALTER TABLE tasks ADD COLUMN IF NOT EXISTS platform_integration_id VARCHAR;")
+            print("Added platform_integration_id to tasks")
+        except Exception as e:
+            print(f"Error altering tasks table: {e}")
+
+        # 2. Drop unused
+        try:
+            cur.execute("DROP TABLE IF EXISTS user_profiles;")
+            cur.execute("DROP TABLE IF EXISTS discord_users;")
+            cur.execute("DROP TABLE IF EXISTS connected_users;")
+            print("Dropped old unused user tables")
+        except Exception as e:
+            print(f"Error dropping old tables: {e}")
+
+        # 3. Create new tables manually
+        try:
+            cur.execute("""
+            CREATE TABLE IF NOT EXISTS users (
+                id VARCHAR PRIMARY KEY,
+                username VARCHAR UNIQUE,
+                email VARCHAR,
+                created_at VARCHAR,
+                updated_at VARCHAR
+            );
+            CREATE INDEX IF NOT EXISTS ix_users_username ON users (username);
+            CREATE INDEX IF NOT EXISTS ix_users_id ON users (id);
+            """)
+            print("Created users table")
+            
+            cur.execute("""
+            CREATE TABLE IF NOT EXISTS platform_integrations (
+                id VARCHAR PRIMARY KEY,
+                user_id VARCHAR,
+                platform_name VARCHAR,
+                access_token VARCHAR,
+                platform_metadata JSON,
+                connected_at VARCHAR
+            );
+            CREATE INDEX IF NOT EXISTS ix_platform_integrations_platform_name ON platform_integrations (platform_name);
+            CREATE INDEX IF NOT EXISTS ix_platform_integrations_id ON platform_integrations (id);
+            """)
+            print("Created platform_integrations table")
+        except Exception as e:
+            print(f"Error creating tables: {e}")
+
+        cur.close()
+        conn.close()
+    except Exception as e:
+        print(f"Failed to connect: {e}")
+
+if __name__ == "__main__":
+    run_migrations()

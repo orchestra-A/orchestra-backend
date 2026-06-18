@@ -20,8 +20,9 @@ class TaskTable(Base):
     id = Column(String, primary_key=True, index=True)
     title = Column(String)
     state = Column(String, default="PENDING")
-    assigned_to = Column(String, nullable=True)
+    assigned_to = Column(String, nullable=True) # Mapped to username
     project_id = Column(String, nullable=True, index=True)
+    platform_integration_id = Column(String, nullable=True) # New FK to platform integrations
     order = Column(Integer, nullable=True)
     created_at = Column(String)
 
@@ -33,33 +34,19 @@ class TaskTable(Base):
     history = Column(JSON, default=list)
 
 
-class ConnectedUserTable(Base):
-    __tablename__ = "connected_users"
-    github_username = Column(String, primary_key=True, index=True)
-    repo = Column(String)
-    connected_at = Column(String)
-    webhook_registered = Column(Boolean)
-    webhook_id = Column(Integer, nullable=True)
-    access_token = Column(String)
-
-
-class DiscordUserTable(Base):
-    __tablename__ = "discord_users"
-    discord_id = Column(String, primary_key=True, index=True)
-    discord_username = Column(String)
-    access_token = Column(String)
+class UserTable(Base):
+    __tablename__ = "users"
+    id = Column(String, primary_key=True, index=True)
+    username = Column(String, unique=True, index=True)
     email = Column(String, nullable=True)
-    connected_at = Column(String)
-
-
-class UserProfileTable(Base):
-    __tablename__ = "user_profiles"
-    user_id = Column(String, primary_key=True, index=True)
-    email = Column(String, nullable=True)
-    github_username = Column(String, nullable=True)
-    github_access_token = Column(String, nullable=True)
-    discord_id = Column(String, nullable=True)
-    discord_username = Column(String, nullable=True)
-    discord_access_token = Column(String, nullable=True)
     created_at = Column(String)
     updated_at = Column(String)
+
+class PlatformIntegrationTable(Base):
+    __tablename__ = "platform_integrations"
+    id = Column(String, primary_key=True, index=True)
+    user_id = Column(String) # Foreign key to users.id
+    platform_name = Column(String, index=True)
+    access_token = Column(String)
+    platform_metadata = Column(JSON)
+    connected_at = Column(String)
