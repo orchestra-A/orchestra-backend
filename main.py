@@ -1377,6 +1377,15 @@ async def simulate_webhook(request: Request):
 # =====================================================================
 @app.post("/webhook/github")
 async def receive_github(request: Request):
+    github_event = request.headers.get("X-GitHub-Event", "unknown")
+
+    # ── HANDLE PING FIRST — before any verification ──
+    # Ping is just GitHub checking the URL works.
+    # No signature needed, just return 200 immediately.
+    if github_event == "ping":
+        print("[GITHUB] ✅ Ping received — webhook registered successfully!")
+        sys.stdout.flush()
+        return {"received": True, "message": "Ping acknowledged"}
 
     # ── SIGNATURE VERIFICATION ─────────────────────────────────
     # Read raw bytes first — needed for signature check
@@ -1444,14 +1453,7 @@ async def receive_github(request: Request):
         sys.stdout.flush()
     # ── END SIGNATURE VERIFICATION ──────────────────────────────
 
-    github_event = request.headers.get("X-GitHub-Event", "unknown")
     log_webhook_payload("GITHUB", payload)
-
-    # GitHub ping when webhook is first registered
-    if github_event == "ping":
-        print(f"[GITHUB] ✅ Ping from {sender} — webhook registered!")
-        sys.stdout.flush()
-        return {"received": True, "message": "Ping acknowledged"}
 
     # ── NORMALIZE EVENT FIRST ──────────────────────────────────
     normalized = process_and_save("github", github_event, payload)
