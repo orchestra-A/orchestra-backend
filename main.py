@@ -246,7 +246,7 @@ async def register_github_webhook(
     # This is the URL GitHub will send events to
     # Every user's events come to the same endpoint
     # We identify whose event it is from the payload
-    webhook_url = "https://orchestra-backend-2v5a.onrender.com/webhook/github"
+    webhook_url = "https://orchestra-backend-3l80.onrender.com/webhook/github"
 
     # The webhook configuration we send to GitHub
     webhook_config = {
