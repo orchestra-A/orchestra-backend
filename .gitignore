@@ -1,4 +1,3 @@
-member4_week1_guide.html
 Timeline_Orchestra.pdf
 venv/
 __pycache__/
@@ -7,26 +6,13 @@ __pycache__/
 dev_log.md
 events.json
 
-# Test scripts & Backup copies
-main (1).py
-test_endpoints_script.py
-test_live_webhooks.py
-
 # Old directories / Instructions
-week1-webhook/
 week2_files/
 week3_files/
-# -----------------
-events.json
 tasks.json
-
 week5_files/
 
 # Sensitive data / access tokens
-user_profiles.json
-discord_activity.json
-connected_users.json
-discord_users.json
 *.db
 *.sqlite3
 
@@ -34,5 +20,6 @@ discord_users.json
 .vscode/
 pyrightconfig.json
 
-# Work Log
-WORK_LOG.md
+# Test scripts
+test_endpoints_script.py
+test_live_webhooks.py
