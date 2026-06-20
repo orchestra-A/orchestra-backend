@@ -745,29 +745,60 @@ async def on_ready():
         sys.stdout.flush()
 
 
+# The one Discord channel Orchestra listens to.
+# Only messages from this channel are processed.
+# All other channels are ignored completely.
+DISCORD_ALLOWED_CHANNEL_ID = int(os.getenv("DISCORD_CHANNEL_ID", "1509182463493013526"))
+
 @bot.event
 async def on_message(message):
-    """
-    Fires every time someone sends a message in any channel
-    the bot can see.
-
-    What we do:
-    1. Ignore messages from the bot itself (prevents infinite loops)
-    2. Ignore empty messages
-    3. Build a payload in the same format as our /webhook/discord expects
-    4. Call our existing processing logic directly
-    5. Update member activity tracker
-
-    This replaces Make.com completely.
-    Real message text is now captured properly.
-    """
     # Ignore messages from the bot itself
     if message.author == bot.user:
         return
 
-    # Ignore empty messages (images, stickers with no text)
+    # ── CHANNEL FILTER ──────────────────────────────────
+    # Only process messages from the designated channel.
+    # Every other channel in the server is ignored.
+    if message.channel.id != DISCORD_ALLOWED_CHANNEL_ID:
+        return
+    # ────────────────────────────────────────────────────
+
+    # Ignore empty messages
     if not message.content:
         return
+
+    print(f"[DISCORD BOT] 📨 Message from {message.author.name} "
+          f"in #{message.channel.name}: {message.content[:50]}")
+    sys.stdout.flush()
+
+    # Build payload
+    payload = {
+        "type": 0,
+        "channel_id": str(message.channel.id),
+        "channel_name": str(message.channel.name),
+        "content": message.content,
+        "author": message.author.name,
+        "author_id": str(message.author.id),
+        "guild_id": str(message.guild.id) if message.guild else None,
+        "message_id": str(message.id),
+        "timestamp": message.created_at.isoformat()
+    }
+
+    update_member_activity(
+        actor=message.author.name,
+        content=message.content,
+        timestamp=message.created_at.isoformat()
+    )
+
+    try:
+        from normalizer import normalize_event
+        normalized = normalize_event("discord_message", payload)
+        save_normalized_event(normalized)
+        print(f"[DISCORD BOT] ✅ Message normalized and saved")
+        sys.stdout.flush()
+    except Exception as e:
+        print(f"[DISCORD BOT] ⚠️ Error: {e}")
+        sys.stdout.flush()
 
     print(
         f"[DISCORD BOT] 📨 Message from {message.author.name}: {message.content[:50]}"
