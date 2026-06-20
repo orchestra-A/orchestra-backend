@@ -2225,6 +2225,61 @@ async def get_users():
 
 
 # =====================================================================
+# Route — Update User Profile
+# =====================================================================
+# PUT /users/{user_id} & PATCH /users/{user_id}
+# Updates user profile information.
+# =====================================================================
+@app.put("/users/{user_id}")
+async def update_user_put(user_id: str, request: Request):
+    from fastapi.responses import Response
+    from database import SessionLocal
+    from models_sql import UserTable
+
+    db = SessionLocal()
+    try:
+        user = db.query(UserTable).filter_by(id=user_id).first()
+        if not user:
+            return Response(content='{"error": "User not found"}', media_type="application/json", status_code=404)
+        
+        data = await request.json()
+        if "username" in data:
+            user.username = data["username"]
+        if "email" in data:
+            user.email = data["email"]
+        
+        user.updated_at = datetime.now(timezone.utc).isoformat()
+        db.commit()
+        return Response(content='{"message": "User updated successfully"}', media_type="application/json")
+    finally:
+        db.close()
+
+@app.patch("/users/{user_id}")
+async def update_user_patch(user_id: str, request: Request):
+    from fastapi.responses import Response
+    from database import SessionLocal
+    from models_sql import UserTable
+
+    db = SessionLocal()
+    try:
+        user = db.query(UserTable).filter_by(id=user_id).first()
+        if not user:
+            return Response(content='{"error": "User not found"}', media_type="application/json", status_code=404)
+        
+        data = await request.json()
+        if "username" in data:
+            user.username = data["username"]
+        if "email" in data:
+            user.email = data["email"]
+        
+        user.updated_at = datetime.now(timezone.utc).isoformat()
+        db.commit()
+        return Response(content='{"message": "User patched successfully"}', media_type="application/json")
+    finally:
+        db.close()
+
+
+# =====================================================================
 # Route — Discord Activity Summary
 # =====================================================================
 # GET /discord/activity
