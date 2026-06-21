@@ -2262,6 +2262,8 @@ async def update_user_put(user_id: str, request: Request):
         data = await request.json()
         if "username" in data:
             user.username = data["username"]
+        if "name" in data:
+            user.name = data["name"]
         if "email" in data:
             user.email = data["email"]
         
@@ -2286,6 +2288,8 @@ async def update_user_patch(user_id: str, request: Request):
         data = await request.json()
         if "username" in data:
             user.username = data["username"]
+        if "name" in data:
+            user.name = data["name"]
         if "email" in data:
             user.email = data["email"]
         

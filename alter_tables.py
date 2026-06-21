@@ -21,10 +21,12 @@ def run_migrations():
         
         print("Running manual migrations with psycopg2...")
 
-        # 1. Alter tasks
+        # 1. Alter tasks and users
         try:
             cur.execute("ALTER TABLE tasks ADD COLUMN IF NOT EXISTS platform_integration_id VARCHAR;")
             print("Added platform_integration_id to tasks")
+            cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS name VARCHAR;")
+            print("Added name to users")
         except Exception as e:
             print(f"Error altering tasks table: {e}")
 
@@ -43,6 +45,7 @@ def run_migrations():
             CREATE TABLE IF NOT EXISTS users (
                 id VARCHAR PRIMARY KEY,
                 username VARCHAR UNIQUE,
+                name VARCHAR,
                 email VARCHAR,
                 created_at VARCHAR,
                 updated_at VARCHAR

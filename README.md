@@ -64,7 +64,7 @@ uvicorn main:app --reload --port 8000
   curl -X GET http://localhost:8000/tasks
   curl -X GET http://localhost:8000/tasks?project_id=your_project_id
   ```
-- **View Normalized Events:** Open `http://localhost:8000/events` in your browser.
+
 
 ---
 
