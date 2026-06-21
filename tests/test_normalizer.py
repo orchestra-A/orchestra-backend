@@ -281,6 +281,62 @@ check("Summary survives round-trip", original.action_summary == reloaded.action_
 
 
 # ─────────────────────────────────────────────
+# Test 11: Timestamp Safety Checks
+# ─────────────────────────────────────────────
+section("Test 11: Timestamp Safety Checks")
+
+# 1. Valid string
+event_ts_str = normalize_event("discord_message", {"timestamp": "2026-06-20T12:00:00Z"})
+check("Preserves valid string timestamp", event_ts_str.timestamp == "2026-06-20T12:00:00Z")
+
+# 2. Integer/float (non-string, non-dict)
+event_ts_int = normalize_event("discord_message", {"timestamp": 1782384000})
+check("Converts integer timestamp to string", event_ts_int.timestamp == "1782384000")
+
+# 3. Dict type (should fall back to current time)
+event_ts_dict = normalize_event("discord_message", {"timestamp": {"date": "2026-06-20"}})
+check("Falls back for dict timestamp", isinstance(event_ts_dict.timestamp, str) and len(event_ts_dict.timestamp) > 10)
+
+# 4. None (should fall back to current time)
+event_ts_none = normalize_event("discord_message", {"timestamp": None})
+check("Falls back for None timestamp", isinstance(event_ts_none.timestamp, str) and len(event_ts_none.timestamp) > 10)
+
+
+# ─────────────────────────────────────────────
+# Test 12: Actor Fallback Logic
+# ─────────────────────────────────────────────
+section("Test 12: Actor Fallback Logic")
+
+# 1. Push payload fallback to sender.login
+push_sender_only = {
+    "sender": {"login": "sender_bob"}
+}
+event_actor_sender = normalize_event("push", push_sender_only)
+check("GitHub push falls back to sender.login", event_actor_sender.actor == "sender_bob")
+
+# 2. Push payload fallback to commit author
+push_commit_only = {
+    "commits": [{"author": {"username": "commit_coder"}}]
+}
+event_actor_commit = normalize_event("push", push_commit_only)
+check("GitHub push falls back to commit author username", event_actor_commit.actor == "commit_coder")
+
+# 3. Discord payload fallback to username
+discord_username_only = {
+    "username": "discord_usr"
+}
+event_discord_user = normalize_event("discord_message", discord_username_only)
+check("Discord message falls back to username", event_discord_user.actor == "discord_usr")
+
+# 4. Figma payload fallback to actor.handle
+figma_actor_only = {
+    "actor": {"handle": "figma_designer"}
+}
+event_figma_actor = normalize_event("figma", figma_actor_only)
+check("Figma falls back to actor.handle", event_figma_actor.actor == "figma_designer")
+
+
+# ─────────────────────────────────────────────
 # Final summary
 # ─────────────────────────────────────────────
 total = len(results)
