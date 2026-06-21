@@ -1935,7 +1935,7 @@ async def github_login(repo: Optional[str] = None):
 
     github_auth_url = (
         f"https://github.com/login/oauth/authorize"
-        f"client_id={GITHUB_CLIENT_ID}"
+        f"?client_id={GITHUB_CLIENT_ID}"
         f"&scope=read:user,repo,admin:repo_hook"
         f"&state={state}"
     )
@@ -2068,7 +2068,7 @@ async def discord_login():
 
     discord_auth_url = (
         f"https://discord.com/oauth2/authorize"
-        f"client_id={DISCORD_CLIENT_ID}"
+        f"?client_id={DISCORD_CLIENT_ID}"
         f"&redirect_uri=https://orchestra-backend-3l80.onrender.com/auth/discord/callback"
         f"&response_type=code"
         f"&scope=identify%20email%20guilds"
