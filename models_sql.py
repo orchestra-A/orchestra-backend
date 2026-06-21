@@ -38,6 +38,7 @@ class UserTable(Base):
     __tablename__ = "users"
     id = Column(String, primary_key=True, index=True)
     username = Column(String, unique=True, index=True)
+    name = Column(String, nullable=True)
     email = Column(String, nullable=True)
     created_at = Column(String)
     updated_at = Column(String)
