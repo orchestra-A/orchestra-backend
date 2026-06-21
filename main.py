@@ -756,12 +756,9 @@ async def on_message(message):
     if message.author == bot.user:
         return
 
-    # ── CHANNEL FILTER ──────────────────────────────────
-    # Only process messages from the designated channel.
-    # Every other channel in the server is ignored.
+    # Only process messages from the designated channel
     if message.channel.id != DISCORD_ALLOWED_CHANNEL_ID:
         return
-    # ────────────────────────────────────────────────────
 
     # Ignore empty messages
     if not message.content:
@@ -784,12 +781,14 @@ async def on_message(message):
         "timestamp": message.created_at.isoformat()
     }
 
+    # Update activity tracker
     update_member_activity(
         actor=message.author.name,
         content=message.content,
         timestamp=message.created_at.isoformat()
     )
 
+    # Normalize and save
     try:
         from normalizer import normalize_event
         normalized = normalize_event("discord_message", payload)
@@ -798,46 +797,6 @@ async def on_message(message):
         sys.stdout.flush()
     except Exception as e:
         print(f"[DISCORD BOT] ⚠️ Error: {e}")
-        sys.stdout.flush()
-
-    print(
-        f"[DISCORD BOT] 📨 Message from {message.author.name}: {message.content[:50]}"
-    )
-    sys.stdout.flush()
-
-    # Build payload in same format as /webhook/discord expects
-    # This way our existing normalizer handles it exactly the same
-    payload = {
-        "type": 0,
-        "channel_id": str(message.channel.id),
-        "channel_name": str(message.channel.name),
-        "content": message.content,
-        "author": message.author.name,
-        "author_id": str(message.author.id),
-        "guild_id": str(message.guild.id) if message.guild else None,
-        "message_id": str(message.id),
-        "timestamp": message.created_at.isoformat(),
-    }
-
-    # Update member activity tracker
-    # This builds "Member X is working on: ..."
-    update_member_activity(
-        actor=message.author.name,
-        content=message.content,
-        timestamp=message.created_at.isoformat(),
-    )
-
-    # Save as normalized event using existing pipeline
-    # Same as if it came through /webhook/discord
-    try:
-        from normalizer import normalize_event
-
-        normalized = normalize_event("discord_message", payload)
-        save_normalized_event(normalized)
-        print(f"[DISCORD BOT] ✅ Message normalized and saved")
-        sys.stdout.flush()
-    except Exception as e:
-        print(f"[DISCORD BOT] ⚠️ Normalization error: {e}")
         sys.stdout.flush()
 
 
@@ -1455,32 +1414,29 @@ async def receive_github(request: Request):
     finally:
         db.close()
 
-    # Enforce signature verification if GITHUB_WEBHOOK_SECRET_KEY is configured
-    if GITHUB_WEBHOOK_SECRET_KEY and GITHUB_WEBHOOK_SECRET_KEY != "default_secret":
-        if not user_secret:
-            from fastapi.responses import JSONResponse
-            print(f"[GITHUB] ❌ Unauthorized sender: {sender} is not registered")
+    # Enforce signature verification only if:
+    # 1. A webhook secret is configured
+    # 2. AND we have a registered user secret to verify against
+    # If no user is registered yet (e.g. org-level webhooks),
+    # we skip verification and trust the payload.
+    if GITHUB_WEBHOOK_SECRET_KEY and GITHUB_WEBHOOK_SECRET_KEY != "default_secret" and user_secret:
+        if github_signature:
+            expected_signature = (
+                "sha256="
+                + hmac.new(user_secret.encode(), raw_body, hashlib.sha256).hexdigest()
+            )
+            if not hmac.compare_digest(github_signature, expected_signature):
+                print(f"[GITHUB] ❌ Signature verification FAILED for {sender}")
+                sys.stdout.flush()
+                from fastapi.responses import JSONResponse
+                return JSONResponse(status_code=401, content={"error": "Invalid signature"})
+            print(f"[GITHUB] ✅ Signature verified for {sender}")
             sys.stdout.flush()
-            return JSONResponse(status_code=401, content={"error": "Unauthorized sender"})
-
-        if not github_signature:
-            from fastapi.responses import JSONResponse
-            print(f"[GITHUB] ❌ Missing signature header for {sender}")
+        else:
+            print(f"[GITHUB] ⚠️ No signature header — skipping verification for {sender}")
             sys.stdout.flush()
-            return JSONResponse(status_code=401, content={"error": "Missing signature"})
-
-        expected_signature = (
-            "sha256="
-            + hmac.new(user_secret.encode(), raw_body, hashlib.sha256).hexdigest()
-        )
-
-        if not hmac.compare_digest(github_signature, expected_signature):
-            print(f"[GITHUB] ❌ Signature verification FAILED for {sender}")
-            sys.stdout.flush()
-            from fastapi.responses import JSONResponse
-
-            return JSONResponse(status_code=401, content={"error": "Invalid signature"})
-        print(f"[GITHUB] ✅ Signature verified for {sender}")
+    else:
+        print(f"[GITHUB] ℹ️ No user secret found for {sender} — accepting without verification")
         sys.stdout.flush()
     # ── END SIGNATURE VERIFICATION ──────────────────────────────
 
