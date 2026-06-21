@@ -2204,7 +2204,7 @@ async def get_users():
 # Updates user profile information.
 # =====================================================================
 @app.put("/users/{user_id}")
-async def update_user_put(user_id: str, payload: dict):
+async def update_user_put(user_id: str, request: Request):
     from fastapi.responses import Response
     from database import SessionLocal
     from models_sql import UserTable
@@ -2215,7 +2215,7 @@ async def update_user_put(user_id: str, payload: dict):
         if not user:
             return Response(content='{"error": "User not found"}', media_type="application/json", status_code=404)
         
-        data = payload
+        data = await request.json()
         if "username" in data:
             user.username = data["username"]
         if "name" in data:
@@ -2230,7 +2230,7 @@ async def update_user_put(user_id: str, payload: dict):
         db.close()
 
 @app.patch("/users/{user_id}")
-async def update_user_patch(user_id: str, payload: dict):
+async def update_user_patch(user_id: str, request: Request):
     from fastapi.responses import Response
     from database import SessionLocal
     from models_sql import UserTable
@@ -2241,7 +2241,7 @@ async def update_user_patch(user_id: str, payload: dict):
         if not user:
             return Response(content='{"error": "User not found"}', media_type="application/json", status_code=404)
         
-        data = payload
+        data = await request.json()
         if "username" in data:
             user.username = data["username"]
         if "name" in data:
