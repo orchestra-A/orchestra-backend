@@ -2024,7 +2024,7 @@ async def discord_login():
 
     discord_auth_url = (
         f"https://discord.com/oauth2/authorize"
-        f"client_id={DISCORD_CLIENT_ID}"
+        f"?client_id={DISCORD_CLIENT_ID}"
         f"&redirect_uri=https://orchestra-backend-30fy.onrender.com/auth/discord/callback"
         f"&response_type=code"
         f"&scope=identify%20email%20guilds"

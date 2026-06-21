@@ -18,6 +18,7 @@ week5_files/
 
 # IDE configs
 .vscode/
+.agent/
 pyrightconfig.json
 
 # Test scripts
