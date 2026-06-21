@@ -14,6 +14,15 @@ from datetime import datetime, timezone
 from models import NormalizedEvent
 
 
+def _extract_timestamp(body: dict) -> str:
+    ts = body.get("timestamp")
+    if isinstance(ts, str) and ts:
+        return ts
+    elif ts is not None and not isinstance(ts, dict):
+        return str(ts)
+    return datetime.now(timezone.utc).isoformat()
+
+
 # ─────────────────────────────────────────────
 # GitHub normalizers
 # ─────────────────────────────────────────────
@@ -22,14 +31,26 @@ from models import NormalizedEvent
 def _normalize_github_push(body: dict) -> NormalizedEvent:
     commits = body.get("commits", [])
     branch = body.get("ref", "").replace("refs/heads/", "")
-    pusher = body.get("pusher", {}).get("name", "unknown")
+    
+    pusher = body.get("pusher", {}).get("name") if isinstance(body.get("pusher"), dict) else None
+    if not pusher or pusher == "unknown":
+        pusher = body.get("sender", {}).get("login") if isinstance(body.get("sender"), dict) else None
+    if not pusher or pusher == "unknown":
+        if commits and isinstance(commits, list) and isinstance(commits[0], dict):
+            author = commits[0].get("author", {})
+            if isinstance(author, dict):
+                pusher = author.get("username") or author.get("name")
+    if not pusher or pusher == "unknown":
+        pusher = "unknown"
+
+    timestamp = _extract_timestamp(body)
 
     return NormalizedEvent(
         id=str(uuid.uuid4()),
         platform="github",
         event_type="push",
         actor=pusher,
-        timestamp=datetime.now(timezone.utc).isoformat(),
+        timestamp=timestamp,
         repo=body.get("repository", {}).get("full_name"),
         action_summary=(f"{pusher} pushed {len(commits)} commit(s) to {branch}"),
         raw_metadata={
@@ -53,26 +74,35 @@ def _normalize_github_push(body: dict) -> NormalizedEvent:
 def _normalize_github_pr(body: dict) -> NormalizedEvent:
     pr = body.get("pull_request", {})
     action = body.get("action", "unknown")
-    actor = pr.get("user", {}).get("login", "unknown")
-    pr_num = pr.get("number")
-    pr_title = pr.get("title", "")
+    
+    actor = None
+    if isinstance(pr, dict):
+        actor = pr.get("user", {}).get("login") if isinstance(pr.get("user"), dict) else None
+    if not actor or actor == "unknown":
+        actor = body.get("sender", {}).get("login") if isinstance(body.get("sender"), dict) else None
+    if not actor or actor == "unknown":
+        actor = "unknown"
+
+    pr_num = pr.get("number") if isinstance(pr, dict) else None
+    pr_title = pr.get("title", "") if isinstance(pr, dict) else ""
+    timestamp = _extract_timestamp(body)
 
     return NormalizedEvent(
         id=str(uuid.uuid4()),
         platform="github",
         event_type="pull_request",
         actor=actor,
-        timestamp=datetime.now(timezone.utc).isoformat(),
+        timestamp=timestamp,
         repo=body.get("repository", {}).get("full_name"),
         action_summary=f"{actor} {action} PR #{pr_num}: {pr_title}",
         raw_metadata={
             "action": action,
             "pr_number": pr_num,
             "pr_title": pr_title,
-            "base_branch": pr.get("base", {}).get("ref"),
-            "head_branch": pr.get("head", {}).get("ref"),
-            "merged": pr.get("merged", False),
-            "pr_url": pr.get("html_url"),
+            "base_branch": pr.get("base", {}).get("ref") if isinstance(pr, dict) else None,
+            "head_branch": pr.get("head", {}).get("ref") if isinstance(pr, dict) else None,
+            "merged": pr.get("merged", False) if isinstance(pr, dict) else False,
+            "pr_url": pr.get("html_url") if isinstance(pr, dict) else None,
         },
     )
 
@@ -80,22 +110,32 @@ def _normalize_github_pr(body: dict) -> NormalizedEvent:
 def _normalize_github_issue(body: dict) -> NormalizedEvent:
     issue = body.get("issue", {})
     action = body.get("action", "unknown")
-    actor = body.get("sender", {}).get("login", "unknown")
+    
+    actor = body.get("sender", {}).get("login") if isinstance(body.get("sender"), dict) else None
+    if not actor or actor == "unknown":
+        if isinstance(issue, dict):
+            actor = issue.get("user", {}).get("login") if isinstance(issue.get("user"), dict) else None
+    if not actor or actor == "unknown":
+        actor = "unknown"
+
+    issue_num = issue.get("number") if isinstance(issue, dict) else None
+    issue_title = issue.get("title", "") if isinstance(issue, dict) else ""
+    timestamp = _extract_timestamp(body)
 
     return NormalizedEvent(
         id=str(uuid.uuid4()),
         platform="github",
         event_type="issue",
         actor=actor,
-        timestamp=datetime.now(timezone.utc).isoformat(),
+        timestamp=timestamp,
         repo=body.get("repository", {}).get("full_name"),
-        action_summary=f"{actor} {action} issue #{issue.get('number')}: {issue.get('title', '')}",
+        action_summary=f"{actor} {action} issue #{issue_num}: {issue_title}",
         raw_metadata={
             "action": action,
-            "issue_number": issue.get("number"),
-            "issue_title": issue.get("title"),
-            "issue_state": issue.get("state"),
-            "issue_url": issue.get("html_url"),
+            "issue_number": issue_num,
+            "issue_title": issue_title,
+            "issue_state": issue.get("state") if isinstance(issue, dict) else None,
+            "issue_url": issue.get("html_url") if isinstance(issue, dict) else None,
         },
     )
 
@@ -103,24 +143,31 @@ def _normalize_github_issue(body: dict) -> NormalizedEvent:
 def _normalize_github_release(body: dict) -> NormalizedEvent:
     release = body.get("release", {})
     action = body.get("action", "unknown")
-    actor = body.get("sender", {}).get("login", "unknown")
+    
+    actor = body.get("sender", {}).get("login") if isinstance(body.get("sender"), dict) else None
+    if not actor or actor == "unknown":
+        if isinstance(release, dict):
+            actor = release.get("author", {}).get("login") if isinstance(release.get("author"), dict) else None
+    if not actor or actor == "unknown":
+        actor = "unknown"
 
-    tag_name = release.get("tag_name", "unknown")
-    release_name = release.get("name", "unknown")
+    tag_name = release.get("tag_name", "unknown") if isinstance(release, dict) else "unknown"
+    release_name = release.get("name", "unknown") if isinstance(release, dict) else "unknown"
+    timestamp = _extract_timestamp(body)
 
     return NormalizedEvent(
         id=str(uuid.uuid4()),
         platform="github",
         event_type="release",
         actor=actor,
-        timestamp=datetime.now(timezone.utc).isoformat(),
+        timestamp=timestamp,
         repo=body.get("repository", {}).get("full_name"),
         action_summary=f"{actor} {action} release {tag_name}: {release_name}",
         raw_metadata={
             "action": action,
             "tag_name": tag_name,
             "release_name": release_name,
-            "release_url": release.get("html_url"),
+            "release_url": release.get("html_url") if isinstance(release, dict) else None,
         },
     )
 
@@ -140,15 +187,23 @@ def _normalize_discord_message(body: dict) -> NormalizedEvent:
     # Handle both cases:
     # Case 1 — author is a dict: {"username": "mohit"} (raw Discord API format)
     # Case 2 — author is a plain string: "Mohit"
-    author_field = body.get("author", "unknown")
+    author_field = body.get("author")
+    author = None
     if isinstance(author_field, dict):
-        author = author_field.get("username", "unknown")
-    else:
-        author = str(author_field) if author_field else "unknown"
+        author = author_field.get("username") or author_field.get("global_name")
+    elif isinstance(author_field, str):
+        author = author_field
+
+    if not author or author == "unknown":
+        author = body.get("username")
+    if not author or author == "unknown":
+        author = body.get("author_id")
+    if not author or author == "unknown":
+        author = "unknown"
 
     content = body.get("content", "")
     channel_id = str(body.get("channel_id", body.get("channel", "unknown")))
-    timestamp = body.get("timestamp") or datetime.now(timezone.utc).isoformat()
+    timestamp = _extract_timestamp(body)
 
     return NormalizedEvent(
         id=str(uuid.uuid4()),
@@ -182,9 +237,31 @@ def _normalize_figma_event(body: dict) -> NormalizedEvent:
     Normalizes a Figma webhook payload.
     """
     event_type = body.get("event_type", "design_update")
-    actor = body.get("triggered_by", {}).get("handle", "unknown")
+    
+    triggered_by = body.get("triggered_by")
+    actor = None
+    if isinstance(triggered_by, dict):
+        actor = triggered_by.get("handle") or triggered_by.get("email") or triggered_by.get("id")
+
+    if not actor or actor == "unknown":
+        act = body.get("actor")
+        if isinstance(act, dict):
+            actor = act.get("handle") or act.get("email")
+        elif isinstance(act, str):
+            actor = act
+
+    if not actor or actor == "unknown":
+        usr = body.get("user")
+        if isinstance(usr, dict):
+            actor = usr.get("handle") or usr.get("email")
+        elif isinstance(usr, str):
+            actor = usr
+
+    if not actor or actor == "unknown":
+        actor = "unknown"
+
     file_name = body.get("file_name", "unknown_file")
-    timestamp = body.get("timestamp") or datetime.now(timezone.utc).isoformat()
+    timestamp = _extract_timestamp(body)
 
     return NormalizedEvent(
         id=str(uuid.uuid4()),

@@ -246,7 +246,7 @@ async def register_github_webhook(
     # This is the URL GitHub will send events to
     # Every user's events come to the same endpoint
     # We identify whose event it is from the payload
-    webhook_url = "https://orchestra-backend-3l80.onrender.com/webhook/github"
+    webhook_url = "https://orchestra-backend-30fy.onrender.com/webhook/github"
 
     # The webhook configuration we send to GitHub
     webhook_config = {
@@ -1875,7 +1875,7 @@ async def get_events():
 # }
 #
 # URL TO GIVE MEMBER 5:
-# wss://orchestra-backend-3l80.onrender.com/ws
+# wss://orchestra-backend-30fy.onrender.com/ws
 #
 # NOTE: wss:// is the secure version of ws:// — same as https vs http
 # =====================================================================
@@ -2074,7 +2074,7 @@ async def discord_login():
     discord_auth_url = (
         f"https://discord.com/oauth2/authorize"
         f"client_id={DISCORD_CLIENT_ID}"
-        f"&redirect_uri=https://orchestra-backend-3l80.onrender.com/auth/discord/callback"
+        f"&redirect_uri=https://orchestra-backend-30fy.onrender.com/auth/discord/callback"
         f"&response_type=code"
         f"&scope=identify%20email%20guilds"
     )
@@ -2108,7 +2108,7 @@ async def discord_callback(code: str):
                 "client_secret": DISCORD_CLIENT_SECRET,
                 "grant_type": "authorization_code",
                 "code": code,
-                "redirect_uri": "https://orchestra-backend-3l80.onrender.com/auth/discord/callback",
+                "redirect_uri": "https://orchestra-backend-30fy.onrender.com/auth/discord/callback",
             },
             headers={"Content-Type": "application/x-www-form-urlencoded"},
         )
