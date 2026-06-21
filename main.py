@@ -2009,16 +2009,11 @@ async def github_callback(code: str, state: Optional[str] = None):
             github_username=github_username, github_access_token=access_token
         )
 
-    return {
-        "message": "GitHub connected successfully",
-        "user": {
-            "github_username": github_username,
-            "name": user_data.get("name"),
-            "avatar": user_data.get("avatar_url"),
-            "github_url": user_data.get("html_url"),
-        },
-        "webhook_registration": webhook_result,
-    }
+    from fastapi.responses import RedirectResponse
+    import os
+    frontend_url = os.getenv("FRONTEND_URL", "http://localhost:5173")
+    redirect_url = f"{frontend_url}/oauth/callback?platform=github&username={github_username}"
+    return RedirectResponse(url=redirect_url)
 
 
 # =====================================================================
@@ -2154,20 +2149,11 @@ async def discord_callback(code: str):
         email=email,
     )
 
-    return {
-        "message": "Discord login successful",
-        "user": {
-            "discord_id": discord_id,
-            "discord_username": discord_username,
-            "email": email,
-            "avatar": avatar_url,
-        },
-        "next_step": {
-            "action": "Add Orchestra Bot to your Discord server",
-            "bot_invite_url": f"https://discord.com/oauth2/authorize?client_id={DISCORD_CLIENT_ID}&permissions=84992&scope=bot",
-            "instructions": "Open the bot_invite_url and select your team's Discord server to add Orchestra Bot",
-        },
-    }
+    from fastapi.responses import RedirectResponse
+    import os
+    frontend_url = os.getenv("FRONTEND_URL", "http://localhost:5173")
+    redirect_url = f"{frontend_url}/oauth/callback?platform=discord&username={discord_username}"
+    return RedirectResponse(url=redirect_url)
 
 
 # =====================================================================
