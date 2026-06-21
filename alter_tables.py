@@ -1,12 +1,12 @@
 import os
 import psycopg2
 
-DATABASE_URL = None
-with open(".env", "r") as f:
-    for line in f:
-        if line.startswith("DATABASE_URL="):
-            DATABASE_URL = line.strip().split("=", 1)[1]
-
+DATABASE_URL = os.getenv("DATABASE_URL")
+if not DATABASE_URL and os.path.exists(".env"):
+    with open(".env", "r") as f:
+        for line in f:
+            if line.startswith("DATABASE_URL="):
+                DATABASE_URL = line.strip().split("=", 1)[1]
 
 if not DATABASE_URL or not DATABASE_URL.startswith("postgres"):
     print("No postgres database url found. Skipping.")
