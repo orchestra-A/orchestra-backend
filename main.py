@@ -1947,6 +1947,11 @@ async def github_callback(code: str, state: Optional[str] = None):
     repo = urllib.parse.unquote(state) if state else None
     webhook_result = {"success": False, "note": "No repo provided"}
 
+    user_profile = save_unified_user_profile(
+        github_username=github_username, github_access_token=access_token
+    )
+    user_id = user_profile.get("user_id") if user_profile else ""
+
     if repo:
         print(f"[GITHUB] Registering webhook for {github_username} on {repo}")
         sys.stdout.flush()
@@ -1961,14 +1966,11 @@ async def github_callback(code: str, state: Optional[str] = None):
             repo_full_name=repo,
             webhook_result=webhook_result,
         )
-        save_unified_user_profile(
-            github_username=github_username, github_access_token=access_token
-        )
 
     from fastapi.responses import RedirectResponse
     import os
     frontend_url = os.getenv("FRONTEND_URL", "http://localhost:5173")
-    redirect_url = f"{frontend_url}/oauth/callback?platform=github&username={github_username}"
+    redirect_url = f"{frontend_url}/oauth/callback?platform=github&username={github_username}&user_id={user_id}"
     return RedirectResponse(url=redirect_url)
 
 
@@ -2098,17 +2100,18 @@ async def discord_callback(code: str):
         access_token=access_token,
         email=email,
     )
-    save_unified_user_profile(
+    user_profile = save_unified_user_profile(
         discord_id=discord_id,
         discord_username=discord_username,
         discord_access_token=access_token,
         email=email,
     )
+    user_id = user_profile.get("user_id") if user_profile else ""
 
     from fastapi.responses import RedirectResponse
     import os
     frontend_url = os.getenv("FRONTEND_URL", "http://localhost:5173")
-    redirect_url = f"{frontend_url}/oauth/callback?platform=discord&username={discord_username}"
+    redirect_url = f"{frontend_url}/oauth/callback?platform=discord&username={discord_username}&user_id={user_id}"
     return RedirectResponse(url=redirect_url)
 
 
