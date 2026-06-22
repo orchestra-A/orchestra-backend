@@ -1935,7 +1935,15 @@ async def github_login(repo: Optional[str] = None, user_id: Optional[str] = None
 # /auth/github/callbackcode=XXX&repo=username/reponame
 # =====================================================================
 @app.get("/auth/github/callback")
-async def github_callback(code: str, state: Optional[str] = None):
+async def github_callback(code: Optional[str] = None, state: Optional[str] = None, error: Optional[str] = None, error_description: Optional[str] = None):
+    from fastapi.responses import RedirectResponse
+    import os
+    frontend_url = os.getenv("FRONTEND_URL", "http://localhost:5173")
+
+    if error or not code:
+        err_msg = error_description or error or "missing_code"
+        return RedirectResponse(url=f"{frontend_url}/oauth/callback?platform=github&error={err_msg}")
+
     import httpx
 
     async with httpx.AsyncClient() as client:
@@ -1949,11 +1957,15 @@ async def github_callback(code: str, state: Optional[str] = None):
             },
             headers={"Accept": "application/json"},
         )
-        token_data = token_response.json()
+        try:
+            token_data = token_response.json()
+        except ValueError:
+            return RedirectResponse(url=f"{frontend_url}/oauth/callback?platform=github&error=provider_error")
+
         access_token = token_data.get("access_token")
 
         if not access_token:
-            return {"error": "Failed to get access token", "details": token_data}
+            return RedirectResponse(url=f"{frontend_url}/oauth/callback?platform=github&error=failed_to_get_token")
 
         # Step 2 — Get user's GitHub profile
         user_response = await client.get(
@@ -1963,7 +1975,11 @@ async def github_callback(code: str, state: Optional[str] = None):
                 "Accept": "application/json",
             },
         )
-        user_data = user_response.json()
+        try:
+            user_data = user_response.json()
+        except ValueError:
+            return RedirectResponse(url=f"{frontend_url}/oauth/callback?platform=github&error=provider_error")
+
         github_username = user_data.get("login")
 
     # Step 3 — Auto register webhook on their repo
@@ -2002,9 +2018,6 @@ async def github_callback(code: str, state: Optional[str] = None):
             repo_full_name=repo,
         )
 
-    from fastapi.responses import RedirectResponse
-    import os
-    frontend_url = os.getenv("FRONTEND_URL", "http://localhost:5173")
     redirect_url = f"{frontend_url}/oauth/callback?platform=github&username={github_username}&user_id={user_id}"
     if is_new_user:
         redirect_url += "&isNewUser=true"
@@ -2090,7 +2103,15 @@ async def discord_login(user_id: Optional[str] = None):
 # We save all this to discord_users.json for the bot to use later.
 # =====================================================================
 @app.get("/auth/discord/callback")
-async def discord_callback(code: str):
+async def discord_callback(code: Optional[str] = None, state: Optional[str] = None, error: Optional[str] = None, error_description: Optional[str] = None):
+    from fastapi.responses import RedirectResponse
+    import os
+    frontend_url = os.getenv("FRONTEND_URL", "http://localhost:5173")
+
+    if error or not code:
+        err_msg = error_description or error or "missing_code"
+        return RedirectResponse(url=f"{frontend_url}/oauth/callback?platform=discord&error={err_msg}")
+
     import httpx
 
     async with httpx.AsyncClient() as client:
@@ -2106,21 +2127,25 @@ async def discord_callback(code: str):
             },
             headers={"Content-Type": "application/x-www-form-urlencoded"},
         )
-        token_data = token_response.json()
+        try:
+            token_data = token_response.json()
+        except ValueError:
+            return RedirectResponse(url=f"{frontend_url}/oauth/callback?platform=discord&error=provider_error")
+
         access_token = token_data.get("access_token")
 
         if not access_token:
-            return {
-                "error": "Failed to get access token from Discord",
-                "details": token_data,
-            }
+            return RedirectResponse(url=f"{frontend_url}/oauth/callback?platform=discord&error=failed_to_get_token")
 
         # Step 2 — Use token to get user's Discord profile
         user_response = await client.get(
             "https://discord.com/api/users/@me",
             headers={"Authorization": f"Bearer {access_token}"},
         )
-        user_data = user_response.json()
+        try:
+            user_data = user_response.json()
+        except ValueError:
+            return RedirectResponse(url=f"{frontend_url}/oauth/callback?platform=discord&error=provider_error")
 
         discord_id = user_data.get("id")
         discord_username = user_data.get("username")
@@ -2148,9 +2173,6 @@ async def discord_callback(code: str):
     user_id = user_profile.get("user_id") if user_profile else ""
     is_new_user = user_profile.get("is_new_user", True) if user_profile else True
 
-    from fastapi.responses import RedirectResponse
-    import os
-    frontend_url = os.getenv("FRONTEND_URL", "http://localhost:5173")
     redirect_url = f"{frontend_url}/oauth/callback?platform=discord&username={discord_username}&user_id={user_id}"
     if is_new_user:
         redirect_url += "&isNewUser=true"
