@@ -342,19 +342,23 @@ def save_unified_user_profile(
     discord_access_token: Optional[str] = None,
     email: Optional[str] = None,
     github_repo: Optional[str] = None,
+    existing_user_id: Optional[str] = None,
 ) -> dict:
     """
     Creates or updates a unified user profile in the database using the dynamic PlatformIntegration table.
     """
     from database import SessionLocal
     from models_sql import UserTable, PlatformIntegrationTable
+    from sqlalchemy.orm.attributes import flag_modified
     import uuid
 
     db = SessionLocal()
     try:
         # 1. Find or create UserTable
         user = None
-        if email:
+        if existing_user_id:
+            user = db.query(UserTable).filter_by(id=existing_user_id).first()
+        if not user and email:
             user = db.query(UserTable).filter_by(email=email).first()
         if not user and github_username:
             user = db.query(UserTable).filter_by(username=github_username).first()
@@ -363,7 +367,7 @@ def save_unified_user_profile(
 
         if not user:
             user_id = f"usr_{str(uuid.uuid4())[:8]}"
-            primary_username = github_username or discord_username or email.split("@")[0]
+            primary_username = github_username or discord_username or (email.split("@")[0] if email else f"user_{str(uuid.uuid4())[:4]}")
             user = UserTable(
                 id=user_id,
                 username=primary_username,
@@ -386,7 +390,12 @@ def save_unified_user_profile(
                 )
                 db.add(pi_gh)
             pi_gh.access_token = github_access_token
-            pi_gh.platform_metadata = {"username": github_username, "repo": github_repo}
+            meta = dict(pi_gh.platform_metadata) if pi_gh.platform_metadata else {}
+            meta["username"] = github_username
+            if github_repo:
+                meta["repo"] = github_repo
+            pi_gh.platform_metadata = meta
+            flag_modified(pi_gh, "platform_metadata")
 
         # 3. Upsert Discord PlatformIntegration
         if discord_id:
@@ -400,13 +409,24 @@ def save_unified_user_profile(
                 )
                 db.add(pi_dc)
             pi_dc.access_token = discord_access_token
-            pi_dc.platform_metadata = {"discord_id": discord_id, "username": discord_username}
+            meta = dict(pi_dc.platform_metadata) if pi_dc.platform_metadata else {}
+            meta["discord_id"] = discord_id
+            meta["username"] = discord_username
+            pi_dc.platform_metadata = meta
+            flag_modified(pi_dc, "platform_metadata")
 
         db.commit()
+
+        # Check if fully onboarded
+        integrations = db.query(PlatformIntegrationTable).filter_by(user_id=user.id).all()
+        platforms_connected = [pi.platform_name for pi in integrations]
+        is_fully_onboarded = "github" in platforms_connected and "discord" in platforms_connected
+
         return {
             "user_id": user.id,
             "username": user.username,
-            "email": user.email
+            "email": user.email,
+            "is_new_user": not is_fully_onboarded
         }
     except Exception as e:
         print(f"[USER PROFILE] ❌ Failed to save user profile: {e}")
@@ -1880,14 +1900,20 @@ async def websocket_endpoint(websocket: WebSocket):
 # After approval, GitHub redirects back to /auth/github/callback
 # =====================================================================
 @app.get("/auth/github")
-async def github_login(repo: Optional[str] = None):
+async def github_login(repo: Optional[str] = None, user_id: Optional[str] = None):
     from fastapi.responses import RedirectResponse
     import urllib.parse
+    import json
 
-    # We pass the repo name through GitHub's "state" parameter
+    # We pass the repo name and user_id through GitHub's "state" parameter
     # GitHub preserves "state" through the OAuth flow and sends it back
-    # This is the standard way to pass data through OAuth redirects
-    state = urllib.parse.quote(repo) if repo else ""
+    state_dict = {}
+    if repo:
+        state_dict["repo"] = repo
+    if user_id:
+        state_dict["user_id"] = user_id
+        
+    state = urllib.parse.quote(json.dumps(state_dict)) if state_dict else ""
 
     github_auth_url = (
         f"https://github.com/login/oauth/authorize"
@@ -1941,16 +1967,31 @@ async def github_callback(code: str, state: Optional[str] = None):
         github_username = user_data.get("login")
 
     # Step 3 — Auto register webhook on their repo
-    # Decode the repo name from the state parameter
+    # Decode the state parameter
     import urllib.parse
+    import json
 
-    repo = urllib.parse.unquote(state) if state else None
+    repo = None
+    existing_user_id = None
+    if state:
+        try:
+            state_dict = json.loads(urllib.parse.unquote(state))
+            repo = state_dict.get("repo")
+            existing_user_id = state_dict.get("user_id")
+        except Exception:
+            # Fallback for old simple string state
+            repo = urllib.parse.unquote(state)
+
     webhook_result = {"success": False, "note": "No repo provided"}
 
     user_profile = save_unified_user_profile(
-        github_username=github_username, github_access_token=access_token
+        github_username=github_username, 
+        github_access_token=access_token,
+        github_repo=repo,
+        existing_user_id=existing_user_id
     )
     user_id = user_profile.get("user_id") if user_profile else ""
+    is_new_user = user_profile.get("is_new_user", True) if user_profile else True
 
     if repo:
         print(f"[GITHUB] Registering webhook for {github_username} on {repo}")
@@ -1960,17 +2001,13 @@ async def github_callback(code: str, state: Optional[str] = None):
             github_username=github_username,
             repo_full_name=repo,
         )
-        save_connected_user(
-            github_username=github_username,
-            access_token=access_token,
-            repo_full_name=repo,
-            webhook_result=webhook_result,
-        )
 
     from fastapi.responses import RedirectResponse
     import os
     frontend_url = os.getenv("FRONTEND_URL", "http://localhost:5173")
     redirect_url = f"{frontend_url}/oauth/callback?platform=github&username={github_username}&user_id={user_id}"
+    if is_new_user:
+        redirect_url += "&isNewUser=true"
     return RedirectResponse(url=redirect_url)
 
 
@@ -2021,8 +2058,11 @@ async def get_connected_users():
 #             (needed later for bot to join their server)
 # =====================================================================
 @app.get("/auth/discord")
-async def discord_login():
+async def discord_login(user_id: Optional[str] = None):
     from fastapi.responses import RedirectResponse
+    import urllib.parse
+
+    state = urllib.parse.quote(user_id) if user_id else ""
 
     discord_auth_url = (
         f"https://discord.com/oauth2/authorize"
@@ -2030,6 +2070,7 @@ async def discord_login():
         f"&redirect_uri=https://orchestra-backend-30fy.onrender.com/auth/discord/callback"
         f"&response_type=code"
         f"&scope=identify%20email%20guilds"
+        f"&state={state}"
     )
     return RedirectResponse(discord_auth_url)
 
@@ -2094,24 +2135,25 @@ async def discord_callback(code: str):
             )
 
     # Step 3 — Save this user to our records
-    save_discord_user(
-        discord_id=discord_id,
-        discord_username=discord_username,
-        access_token=access_token,
-        email=email,
-    )
+    import urllib.parse
+    existing_user_id = urllib.parse.unquote(state) if state else None
+
     user_profile = save_unified_user_profile(
         discord_id=discord_id,
         discord_username=discord_username,
         discord_access_token=access_token,
         email=email,
+        existing_user_id=existing_user_id
     )
     user_id = user_profile.get("user_id") if user_profile else ""
+    is_new_user = user_profile.get("is_new_user", True) if user_profile else True
 
     from fastapi.responses import RedirectResponse
     import os
     frontend_url = os.getenv("FRONTEND_URL", "http://localhost:5173")
     redirect_url = f"{frontend_url}/oauth/callback?platform=discord&username={discord_username}&user_id={user_id}"
+    if is_new_user:
+        redirect_url += "&isNewUser=true"
     return RedirectResponse(url=redirect_url)
 
 
