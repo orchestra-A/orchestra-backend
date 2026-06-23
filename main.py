@@ -123,7 +123,8 @@ GITHUB_WEBHOOK_SECRET_KEY = os.getenv("GITHUB_WEBHOOK_SECRET_KEY", "default_secr
 DISCORD_CLIENT_ID = os.getenv("DISCORD_CLIENT_ID")
 DISCORD_CLIENT_SECRET = os.getenv("DISCORD_CLIENT_SECRET")
 DISCORD_BOT_TOKEN = os.getenv("DISCORD_BOT_TOKEN")
-
+GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID")
+GOOGLE_CLIENT_SECRET = os.getenv("GOOGLE_CLIENT_SECRET")
 
 # =====================================================================
 # WEBSOCKET CONNECTION MANAGER
@@ -343,6 +344,10 @@ def save_unified_user_profile(
     email: Optional[str] = None,
     github_repo: Optional[str] = None,
     existing_user_id: Optional[str] = None,
+    google_id: Optional[str] = None,
+    google_name: Optional[str] = None,
+    google_picture: Optional[str] = None,
+    google_access_token: Optional[str] = None,
 ) -> dict:
     """
     Creates or updates a unified user profile in the database using the dynamic PlatformIntegration table.
@@ -408,20 +413,44 @@ def save_unified_user_profile(
                     connected_at=datetime.now(timezone.utc).isoformat()
                 )
                 db.add(pi_dc)
-            pi_dc.access_token = discord_access_token
-            meta = dict(pi_dc.platform_metadata) if pi_dc.platform_metadata else {}
+            pi_dc.platform_metadata = meta
+            flag_modified(pi_dc, "platform_metadata") 
             meta["discord_id"] = discord_id
             meta["username"] = discord_username
             pi_dc.platform_metadata = meta
             flag_modified(pi_dc, "platform_metadata")
+ 
+        # 4. Upsert Google PlatformIntegration
+        if google_id:
+            pi_go = db.query(PlatformIntegrationTable).filter_by(
+                platform_name="google", user_id=user.id
+            ).first()
+            if not pi_go:
+                pi_go = PlatformIntegrationTable(
+                    id=str(uuid.uuid4()),
+                    user_id=user.id,
+                    platform_name="google",
+                    connected_at=datetime.now(timezone.utc).isoformat()
+                )
+                db.add(pi_go)
+            pi_go.access_token = google_access_token
+            meta = dict(pi_go.platform_metadata) if pi_go.platform_metadata else {}
+            meta["google_id"] = google_id
+            meta["name"] = google_name
+            meta["picture"] = google_picture
+            pi_go.platform_metadata = meta
+            flag_modified(pi_go, "platform_metadata")
 
         db.commit()
 
         # Check if fully onboarded
         integrations = db.query(PlatformIntegrationTable).filter_by(user_id=user.id).all()
         platforms_connected = [pi.platform_name for pi in integrations]
-        is_fully_onboarded = "github" in platforms_connected and "discord" in platforms_connected
-
+        is_fully_onboarded = (
+            "github" in platforms_connected or
+            "discord" in platforms_connected or
+            "google" in platforms_connected 
+        )
         return {
             "user_id": user.id,
             "username": user.username,
@@ -1348,7 +1377,7 @@ def update_task_status(task_ref: str, new_status: str) -> bool:
 # =====================================================================
 @app.get("/")
 async def health_check():
-    return "Orchestra Backend Set by Sarvyagya"
+    return "Orchestra Backend Set by Sarvyagya & Arnav"
 
 
 # =====================================================================
@@ -2216,6 +2245,193 @@ async def get_discord_users():
     finally:
         db.close()
 
+# =====================================================================
+# Route — Google OAuth Login
+# =====================================================================
+# User clicks "Sign in with Google" on the frontend.
+# This redirects them to Google's authorization page.
+#
+# Scopes we request:
+# openid   = standard OAuth identity
+# email    = their Gmail address
+# profile  = their name and profile picture
+#
+# We pass user_id as state so if an existing user is adding Google
+# as a second login method, we can link it to their existing profile.
+# =====================================================================
+@app.get("/auth/google")
+async def google_login(user_id: Optional[str] = None):
+    from fastapi.responses import RedirectResponse
+    import urllib.parse
+
+    # Pass user_id through state so we can link to existing profile
+    state = urllib.parse.quote(user_id) if user_id else ""
+
+    google_auth_url = (
+        f"https://accounts.google.com/o/oauth2/v2/auth"
+        f"?client_id={GOOGLE_CLIENT_ID}"
+        f"&redirect_uri=https://orchestra-backend-30fy.onrender.com/auth/google/callback"
+        f"&response_type=code"
+        f"&scope=openid%20email%20profile"
+        f"&access_type=offline"
+        f"&state={state}"
+    )
+    return RedirectResponse(google_auth_url)
+
+
+# =====================================================================
+# Route — Google OAuth Callback
+# =====================================================================
+# Google redirects here after user approves access.
+# We exchange the code for tokens, get their profile,
+# and save them to the unified user profile system.
+#
+# What we get from Google:
+# - sub      = their unique Google ID (like "117834521...")
+# - email    = their Gmail address
+# - name     = their full name
+# - picture  = their profile photo URL
+#
+# After this we redirect to frontend with user info in URL params
+# just like GitHub and Discord callbacks do.
+# =====================================================================
+@app.get("/auth/google/callback")
+async def google_callback(code: str, state: Optional[str] = None):
+    from fastapi.responses import RedirectResponse
+    import httpx
+    import urllib.parse
+
+    frontend_url = os.getenv("FRONTEND_URL", "http://localhost:3000")
+
+    async with httpx.AsyncClient() as client:
+
+        # Step 1 — Exchange code for access token
+        token_response = await client.post(
+            "https://oauth2.googleapis.com/token",
+            data={
+                "client_id": GOOGLE_CLIENT_ID,
+                "client_secret": GOOGLE_CLIENT_SECRET,
+                "code": code,
+                "grant_type": "authorization_code",
+                "redirect_uri": "https://orchestra-backend-30fy.onrender.com/auth/google/callback"
+            },
+            headers={"Content-Type": "application/x-www-form-urlencoded"}
+        )
+
+        try:
+            token_data = token_response.json()
+        except ValueError:
+            return RedirectResponse(
+                url=f"{frontend_url}/oauth/callback?platform=google&error=provider_error"
+            )
+
+        access_token = token_data.get("access_token")
+
+        if not access_token:
+            print(f"[GOOGLE AUTH] ❌ Failed to get token: {token_data}")
+            sys.stdout.flush()
+            return RedirectResponse(
+                url=f"{frontend_url}/oauth/callback?platform=google&error=failed_to_get_token"
+            )
+
+        # Step 2 — Use token to get user's Google profile
+        user_response = await client.get(
+            "https://www.googleapis.com/oauth2/v2/userinfo",
+            headers={"Authorization": f"Bearer {access_token}"}
+        )
+
+        try:
+            user_data = user_response.json()
+        except ValueError:
+            return RedirectResponse(
+                url=f"{frontend_url}/oauth/callback?platform=google&error=provider_error"
+            )
+
+    google_id = user_data.get("id")
+    email = user_data.get("email")
+    name = user_data.get("name")
+    picture = user_data.get("picture")
+
+    print(f"[GOOGLE AUTH] ✅ User logged in: {email} ({name})")
+    sys.stdout.flush()
+
+    # Step 3 — Get existing user_id from state if linking accounts
+    existing_user_id = None
+    if state:
+        try:
+            existing_user_id = urllib.parse.unquote(state)
+        except Exception:
+            pass
+
+    # Step 4 — Save to unified user profile
+    # This links Google identity to any existing GitHub/Discord profile
+    user_profile = save_unified_user_profile(
+        email=email,
+        existing_user_id=existing_user_id,
+        google_id=google_id,
+        google_name=name,
+        google_picture=picture,
+        google_access_token=access_token
+    )
+
+    user_id = user_profile.get("user_id") if user_profile else ""
+    is_new_user = user_profile.get("is_new_user", True) if user_profile else True
+
+    # Step 5 — Redirect back to frontend with user info
+    redirect_url = (
+        f"{frontend_url}/oauth/callback"
+        f"?platform=google"
+        f"&email={urllib.parse.quote(email or '')}"
+        f"&name={urllib.parse.quote(name or '')}"
+        f"&user_id={user_id}"
+        f"&picture={urllib.parse.quote(picture or '')}"
+    )
+    if is_new_user:
+        redirect_url += "&isNewUser=true"
+
+    return RedirectResponse(url=redirect_url)
+
+
+# =====================================================================
+# Route — View Google Connected Users
+# =====================================================================
+# GET /google-users
+# Shows all users who signed in with Google.
+# Access tokens never exposed in response.
+# =====================================================================
+@app.get("/google-users")
+async def get_google_users():
+    from fastapi.responses import Response
+    from database import SessionLocal
+    from models_sql import UserProfileTable
+
+    db = SessionLocal()
+    try:
+        # Get all profiles that have a Google ID connected
+        profiles = db.query(UserProfileTable).filter(
+            UserProfileTable.google_id.isnot(None)
+        ).all()
+
+        safe_users = []
+        for p in profiles:
+            safe_users.append({
+                "user_id": p.user_id,
+                "email": p.email,
+                "google_name": p.google_name,
+                "google_picture": p.google_picture,
+                "github_username": p.github_username,
+                "discord_username": p.discord_username,
+                "connected_at": p.created_at
+            })
+
+        result = {
+            "total": len(safe_users),
+            "google_users": safe_users
+        }
+        formatted = json.dumps(result, indent=4)
+        return Response(content=formatted, media_type="application/json")
+    finally:
+        db.close()
 
 # =====================================================================
 # Route — View Unified User Profiles
