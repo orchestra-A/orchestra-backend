@@ -53,19 +53,5 @@ class PlatformIntegrationTable(Base):
     connected_at = Column(String)
 
 
-class UserProfileTable(Base):
-    __tablename__ = "user_profiles"
-    user_id = Column(String, primary_key=True, index=True)
-    email = Column(String, nullable=True)
-    github_username = Column(String, nullable=True)
-    github_access_token = Column(String, nullable=True)
-    discord_id = Column(String, nullable=True)
-    discord_username = Column(String, nullable=True)
-    discord_access_token = Column(String, nullable=True)
-    google_id = Column(String, nullable=True)
-    google_name = Column(String, nullable=True)
-    google_picture = Column(String, nullable=True)
-    google_access_token = Column(String, nullable=True)
-    created_at = Column(String)
-    updated_at = Column(String)
+
 
