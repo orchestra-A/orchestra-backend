@@ -1950,6 +1950,7 @@ async def github_login(repo: Optional[str] = None, user_id: Optional[str] = None
         f"?client_id={GITHUB_CLIENT_ID}"
         f"&scope=read:user,repo,admin:repo_hook"
         f"&state={state}"
+        f"&redirect_uri={os.getenv('BACKEND_URL', 'http://localhost:8000')}/auth/github/callback"
     )
     return RedirectResponse(github_auth_url)
 
@@ -1984,6 +1985,7 @@ async def github_callback(code: Optional[str] = None, state: Optional[str] = Non
                 "client_id": GITHUB_CLIENT_ID,
                 "client_secret": GITHUB_CLIENT_SECRET,
                 "code": code,
+                "redirect_uri": f"{os.getenv('BACKEND_URL', 'http://localhost:8000')}/auth/github/callback",
             },
             headers={"Accept": "application/json"},
         )
@@ -2110,7 +2112,7 @@ async def discord_login(user_id: Optional[str] = None):
     discord_auth_url = (
         f"https://discord.com/oauth2/authorize"
         f"?client_id={DISCORD_CLIENT_ID}"
-        f"&redirect_uri={BACKEND_URL}/auth/discord/callback"
+        f"&redirect_uri={os.getenv('BACKEND_URL', 'http://localhost:8000')}/auth/discord/callback"
         f"&response_type=code"
         f"&scope=identify%20email%20guilds"
         f"&state={state}"
@@ -2153,7 +2155,7 @@ async def discord_callback(code: Optional[str] = None, state: Optional[str] = No
                 "client_secret": DISCORD_CLIENT_SECRET,
                 "grant_type": "authorization_code",
                 "code": code,
-                "redirect_uri": f"{BACKEND_URL}/auth/discord/callback",
+                "redirect_uri": f"{os.getenv('BACKEND_URL', 'http://localhost:8000')}/auth/discord/callback",
             },
             headers={"Content-Type": "application/x-www-form-urlencoded"},
         )
@@ -2271,7 +2273,7 @@ async def google_login(user_id: Optional[str] = None):
     google_auth_url = (
         f"https://accounts.google.com/o/oauth2/v2/auth"
         f"?client_id={GOOGLE_CLIENT_ID}"
-        f"&redirect_uri={BACKEND_URL}/auth/google/callback"
+        f"&redirect_uri={os.getenv('BACKEND_URL', 'http://localhost:8000')}/auth/google/callback"
         f"&response_type=code"
         f"&scope=openid%20email%20profile"
         f"&access_type=offline"
@@ -2314,7 +2316,7 @@ async def google_callback(code: str, state: Optional[str] = None):
                 "client_secret": GOOGLE_CLIENT_SECRET,
                 "code": code,
                 "grant_type": "authorization_code",
-                "redirect_uri": f"{BACKEND_URL}/auth/google/callback"
+                "redirect_uri": f"{os.getenv('BACKEND_URL', 'http://localhost:8000')}/auth/google/callback"
             },
             headers={"Content-Type": "application/x-www-form-urlencoded"}
         )
