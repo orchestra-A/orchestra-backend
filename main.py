@@ -125,6 +125,7 @@ DISCORD_CLIENT_SECRET = os.getenv("DISCORD_CLIENT_SECRET")
 DISCORD_BOT_TOKEN = os.getenv("DISCORD_BOT_TOKEN")
 GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID")
 GOOGLE_CLIENT_SECRET = os.getenv("GOOGLE_CLIENT_SECRET")
+BACKEND_URL = os.getenv("BACKEND_URL", "http://localhost:8000")
 
 # =====================================================================
 # WEBSOCKET CONNECTION MANAGER
@@ -247,7 +248,7 @@ async def register_github_webhook(
     # This is the URL GitHub will send events to
     # Every user's events come to the same endpoint
     # We identify whose event it is from the payload
-    webhook_url = "https://orchestra-backend-30fy.onrender.com/webhook/github"
+    webhook_url = f"{BACKEND_URL}/webhook/github"
 
     # The webhook configuration we send to GitHub
     webhook_config = {
@@ -2109,7 +2110,7 @@ async def discord_login(user_id: Optional[str] = None):
     discord_auth_url = (
         f"https://discord.com/oauth2/authorize"
         f"?client_id={DISCORD_CLIENT_ID}"
-        f"&redirect_uri=https://orchestra-backend-30fy.onrender.com/auth/discord/callback"
+        f"&redirect_uri={BACKEND_URL}/auth/discord/callback"
         f"&response_type=code"
         f"&scope=identify%20email%20guilds"
         f"&state={state}"
@@ -2152,7 +2153,7 @@ async def discord_callback(code: Optional[str] = None, state: Optional[str] = No
                 "client_secret": DISCORD_CLIENT_SECRET,
                 "grant_type": "authorization_code",
                 "code": code,
-                "redirect_uri": "https://orchestra-backend-30fy.onrender.com/auth/discord/callback",
+                "redirect_uri": f"{BACKEND_URL}/auth/discord/callback",
             },
             headers={"Content-Type": "application/x-www-form-urlencoded"},
         )
@@ -2270,7 +2271,7 @@ async def google_login(user_id: Optional[str] = None):
     google_auth_url = (
         f"https://accounts.google.com/o/oauth2/v2/auth"
         f"?client_id={GOOGLE_CLIENT_ID}"
-        f"&redirect_uri=https://orchestra-backend-30fy.onrender.com/auth/google/callback"
+        f"&redirect_uri={BACKEND_URL}/auth/google/callback"
         f"&response_type=code"
         f"&scope=openid%20email%20profile"
         f"&access_type=offline"
@@ -2313,7 +2314,7 @@ async def google_callback(code: str, state: Optional[str] = None):
                 "client_secret": GOOGLE_CLIENT_SECRET,
                 "code": code,
                 "grant_type": "authorization_code",
-                "redirect_uri": "https://orchestra-backend-30fy.onrender.com/auth/google/callback"
+                "redirect_uri": f"{BACKEND_URL}/auth/google/callback"
             },
             headers={"Content-Type": "application/x-www-form-urlencoded"}
         )
