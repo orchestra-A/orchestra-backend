@@ -413,8 +413,8 @@ def save_unified_user_profile(
                     connected_at=datetime.now(timezone.utc).isoformat()
                 )
                 db.add(pi_dc)
-            pi_dc.platform_metadata = meta
-            flag_modified(pi_dc, "platform_metadata") 
+            pi_dc.access_token = discord_access_token
+            meta = dict(pi_dc.platform_metadata) if pi_dc.platform_metadata else {}
             meta["discord_id"] = discord_id
             meta["username"] = discord_username
             pi_dc.platform_metadata = meta
@@ -2301,7 +2301,7 @@ async def google_callback(code: str, state: Optional[str] = None):
     import httpx
     import urllib.parse
 
-    frontend_url = os.getenv("FRONTEND_URL", "http://localhost:3000")
+    frontend_url = os.getenv("FRONTEND_URL", "http://localhost:5173")
 
     async with httpx.AsyncClient() as client:
 
