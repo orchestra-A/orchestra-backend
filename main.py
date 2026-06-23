@@ -52,7 +52,7 @@ async def startup_event():
 
     # Create tables in the database if they don't exist
     from database import engine, Base
-    import models_sql  # registers ConnectedUserTable, DiscordUserTable, UserProfileTable, etc.
+    import models_sql  # registers UserTable, PlatformIntegrationTable, etc.
     Base.metadata.create_all(bind=engine)
     print("[STARTUP] Database tables verified/created.")
     sys.stdout.flush()
@@ -2404,25 +2404,37 @@ async def google_callback(code: str, state: Optional[str] = None):
 async def get_google_users():
     from fastapi.responses import Response
     from database import SessionLocal
-    from models_sql import UserProfileTable
+    from models_sql import PlatformIntegrationTable, UserTable
+    import json
 
     db = SessionLocal()
     try:
-        # Get all profiles that have a Google ID connected
-        profiles = db.query(UserProfileTable).filter(
-            UserProfileTable.google_id.isnot(None)
-        ).all()
+        db_users = db.query(PlatformIntegrationTable, UserTable)\
+                     .join(UserTable, PlatformIntegrationTable.user_id == UserTable.id)\
+                     .filter(PlatformIntegrationTable.platform_name == "google").all()
 
         safe_users = []
-        for p in profiles:
+        for pi, user in db_users:
+            meta = pi.platform_metadata or {}
+            
+            # Check for other integrations
+            other_pis = db.query(PlatformIntegrationTable).filter(PlatformIntegrationTable.user_id == user.id).all()
+            github_username = None
+            discord_username = None
+            for opi in other_pis:
+                if opi.platform_name == "github":
+                    github_username = (opi.platform_metadata or {}).get("username")
+                elif opi.platform_name == "discord":
+                    discord_username = (opi.platform_metadata or {}).get("username")
+
             safe_users.append({
-                "user_id": p.user_id,
-                "email": p.email,
-                "google_name": p.google_name,
-                "google_picture": p.google_picture,
-                "github_username": p.github_username,
-                "discord_username": p.discord_username,
-                "connected_at": p.created_at
+                "user_id": user.id,
+                "email": user.email,
+                "google_name": meta.get("name"),
+                "google_picture": meta.get("picture"),
+                "github_username": github_username,
+                "discord_username": discord_username,
+                "connected_at": pi.connected_at
             })
 
         result = {
