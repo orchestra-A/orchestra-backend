@@ -20,7 +20,7 @@ Responsible for core server hosting, API endpoint routing, securely managing use
 Responsible for transforming raw, multi-platform events into a clean, uniform format.
 - Parses incoming JSON payloads and extracts crucial metadata (branch, commits, sender).
 - Routes messy data through the **Semantic Data Normalizer** (`normalizer.py`).
-    - Persists standardized timeline blocks into a live serverless PostgreSQL database via SQLAlchemy, accessible via the `GET /events` endpoint.
+  - Persists standardized timeline blocks into a live serverless PostgreSQL database via SQLAlchemy, accessible via the `GET /events` endpoint.
 
 ---
 
@@ -43,11 +43,10 @@ DATABASE_URL=postgresql://user:password@endpoint/dbname
 GITHUB_WEBHOOK_SECRET=your_secret_here
 GITHUB_CLIENT_ID=your_client_id
 GITHUB_CLIENT_SECRET=your_client_secret
-# Discord & Figma variables will be added later
 ```
 
 ### 3. Running the Server
-The production backend is fully managed and deployed automatically via Render. However, to run the server locally for development:
+The production backend is fully managed and deployed automatically via Render. To run the server locally for development:
 ```bash
 # Start the FastAPI server locally
 uvicorn main:app --reload --port 8000
@@ -64,7 +63,6 @@ uvicorn main:app --reload --port 8000
   curl -X GET http://localhost:8000/tasks
   curl -X GET http://localhost:8000/tasks?project_id=your_project_id
   ```
-
 
 ---
 
