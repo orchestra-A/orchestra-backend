@@ -24,11 +24,24 @@ def run_migrations():
         # 1. Alter tasks and users
         try:
             cur.execute("ALTER TABLE tasks ADD COLUMN IF NOT EXISTS platform_integration_id VARCHAR;")
-            print("Added platform_integration_id to tasks")
+            cur.execute("ALTER TABLE tasks ADD COLUMN IF NOT EXISTS track VARCHAR;")
+            cur.execute("ALTER TABLE tasks ADD COLUMN IF NOT EXISTS description VARCHAR;")
+            cur.execute("ALTER TABLE tasks ADD COLUMN IF NOT EXISTS priority VARCHAR;")
+            cur.execute("ALTER TABLE tasks ADD COLUMN IF NOT EXISTS updated_at VARCHAR;")
+            cur.execute("ALTER TABLE tasks ADD COLUMN IF NOT EXISTS platform VARCHAR;")
+            print("Added new columns to tasks")
+            
             cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS name VARCHAR;")
             print("Added name to users")
         except Exception as e:
-            print(f"Error altering tasks table: {e}")
+            print(f"Error altering tables (adding columns): {e}")
+
+        # Rename state to status
+        try:
+            cur.execute("ALTER TABLE tasks RENAME COLUMN state TO status;")
+            print("Renamed state to status in tasks")
+        except Exception as e:
+            print(f"Note: state to status rename might have already occurred or failed: {e}")
 
         # 2. Drop unused
         try:
