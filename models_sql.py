@@ -19,7 +19,12 @@ class TaskTable(Base):
     __tablename__ = "tasks"
     id = Column(String, primary_key=True, index=True)
     title = Column(String)
-    state = Column(String, default="PENDING")
+    status = Column(String, default="PENDING")
+    track = Column(String, nullable=True)
+    description = Column(String, nullable=True)
+    priority = Column(String, nullable=True)
+    updated_at = Column(String, nullable=True)
+    platform = Column(String, nullable=True)
     assigned_to = Column(String, nullable=True) # Mapped to username
     project_id = Column(String, nullable=True, index=True)
     platform_integration_id = Column(String, nullable=True) # New FK to platform integrations

@@ -57,41 +57,7 @@ async def startup_event():
     print("[STARTUP] Database tables verified/created.")
     sys.stdout.flush()
 
-    # Seed TaskTable from tasks.json if TaskTable is empty
-    from database import SessionLocal
-    from models_sql import TaskTable
-    db = SessionLocal()
-    try:
-        if db.query(TaskTable).count() == 0:
-            print("[STARTUP] TaskTable is empty. Seeding from tasks.json...")
-            sys.stdout.flush()
-            # If tasks.json doesn't exist, initialize it first
-            initialize_tasks_file()
-            with open("tasks.json", "r") as f:
-                tdata = json.load(f)
-            for t in tdata.get("tasks", []):
-                new_db_task = TaskTable(
-                    id=t["id"],
-                    title=t.get("title", "Untitled"),
-                    state=t.get("status", "pending").upper(),
-                    assigned_to=t.get("assigned_to"),
-                    project_id=t.get("project_id"),
-                    order=t.get("order"),
-                    created_at=t.get("created_at"),
-                    depends_on=t.get("depends_on", []),
-                    history=t.get("history", [])
-                )
-                db.add(new_db_task)
-            db.commit()
-            print("[STARTUP] TaskTable seeded successfully.")
-        else:
-            print("[STARTUP] TaskTable already contains data, skipping seeding.")
-    except Exception as e:
-        print(f"[STARTUP] Error seeding TaskTable: {e}")
-        db.rollback()
-    finally:
-        db.close()
-        sys.stdout.flush()
+    # (Legacy task.json seeding removed)
 
     asyncio.create_task(start_discord_bot())
     print("[STARTUP] Discord bot task created")
@@ -558,197 +524,7 @@ def sync_task_status_to_neo4j(task_id: str, status: str) -> bool:
         return False
 
 
-def initialize_tasks_file():
-    if not os.path.exists("tasks.json"):
-        tasks_data = {
-            "total": 12,
-            "tasks": [
-                {
-                    "id": "task_001",
-                    "order": 1,
-                    "project_id": "proj_orchestra",
-                    "title": "Set up Neo4j database schema",
-                    "description": "Define node types and relationship models.",
-                    "status": "completed",
-                    "assigned_to": "Member 2",
-                    "platform": "github",
-                    "priority": "high",
-                    "created_at": "2025-05-28T09:00:00Z",
-                    "updated_at": "2025-05-30T14:30:00Z",
-                },
-                {
-                    "id": "task_002",
-                    "order": 2,
-                    "project_id": "proj_orchestra",
-                    "title": "Build semantic data normalizer",
-                    "description": "Scrub incoming platform events into clean uniform data blocks.",
-                    "status": "in_progress",
-                    "assigned_to": "Member 4",
-                    "platform": "github",
-                    "priority": "high",
-                    "created_at": "2025-05-28T09:00:00Z",
-                    "updated_at": "2025-06-01T10:00:00Z",
-                },
-                {
-                    "id": "task_003",
-                    "order": 3,
-                    "project_id": "proj_orchestra",
-                    "title": "Connect reactflow canvas to backend",
-                    "description": "Replace static mock files with live database endpoints.",
-                    "status": "in_progress",
-                    "assigned_to": "Member 5",
-                    "platform": "figma",
-                    "priority": "medium",
-                    "created_at": "2025-05-29T11:00:00Z",
-                    "updated_at": "2025-05-31T16:00:00Z",
-                },
-                {
-                    "id": "task_004",
-                    "order": 4,
-                    "project_id": "proj_orchestra",
-                    "title": "Implement Connect Workspaces UI",
-                    "description": "Build authentication screens for team tool integrations.",
-                    "status": "in_progress",
-                    "assigned_to": "Member 6",
-                    "platform": "figma",
-                    "priority": "medium",
-                    "created_at": "2025-05-29T11:00:00Z",
-                    "updated_at": "2025-06-01T09:00:00Z",
-                },
-                {
-                    "id": "task_005",
-                    "order": 5,
-                    "project_id": "proj_orchestra",
-                    "title": "Configure Discord webhook listener",
-                    "description": "Expand FastAPI server to natively catch Discord events.",
-                    "status": "completed",
-                    "assigned_to": "Member 3",
-                    "platform": "discord",
-                    "priority": "high",
-                    "created_at": "2025-06-01T08:00:00Z",
-                    "updated_at": "2025-06-01T12:00:00Z",
-                },
-                {
-                    "id": "task_006",
-                    "order": 6,
-                    "project_id": "proj_orchestra",
-                    "title": "Configure Figma webhook listener",
-                    "description": "Expand FastAPI server to natively catch Figma design events.",
-                    "status": "completed",
-                    "assigned_to": "Member 3",
-                    "platform": "figma",
-                    "priority": "high",
-                    "created_at": "2025-06-01T08:00:00Z",
-                    "updated_at": "2025-06-01T12:00:00Z",
-                },
-                {
-                    "id": "task_007",
-                    "order": 7,
-                    "project_id": "proj_orchestra",
-                    "title": "LLM JSON extraction prompting",
-                    "description": "Force LLM to respond only in structured valid JSON.",
-                    "status": "completed",
-                    "assigned_to": "Member 1",
-                    "platform": "github",
-                    "priority": "high",
-                    "created_at": "2025-05-28T09:00:00Z",
-                    "updated_at": "2025-05-30T11:00:00Z",
-                },
-                {
-                    "id": "task_008",
-                    "order": 8,
-                    "project_id": "proj_orchestra",
-                    "title": "GitHub State Machine setup",
-                    "description": "Auto-update task status when matching pull requests are submitted.",
-                    "status": "todo",
-                    "assigned_to": "Member 3",
-                    "platform": "github",
-                    "priority": "high",
-                    "created_at": "2025-06-01T08:00:00Z",
-                    "updated_at": "2025-06-01T08:00:00Z",
-                },
-                {
-                    "id": "task_009",
-                    "order": 1,
-                    "project_id": "proj_marketing",
-                    "title": "Design new landing page",
-                    "description": "Create wireframes and mockups for the marketing site.",
-                    "status": "completed",
-                    "assigned_to": "Member 6",
-                    "platform": "figma",
-                    "priority": "high",
-                    "created_at": "2025-06-02T11:00:00Z",
-                },
-                {
-                    "id": "task_010",
-                    "order": 2,
-                    "project_id": "proj_marketing",
-                    "title": "Write copy for landing page",
-                    "description": "Draft marketing copy and value propositions.",
-                    "status": "todo",
-                    "assigned_to": "Member 1",
-                    "platform": "discord",
-                    "priority": "medium",
-                    "created_at": "2025-06-02T08:00:00Z",
-                },
-                {
-                    "id": "task_011",
-                    "order": 1,
-                    "project_id": "proj_mobile_app",
-                    "title": "Setup React Native CLI",
-                    "description": "Initialize the bare React Native project.",
-                    "status": "todo",
-                    "assigned_to": "Member 5",
-                    "platform": "github",
-                    "priority": "high",
-                    "created_at": "2025-06-03T09:00:00Z",
-                },
-                {
-                    "id": "task_012",
-                    "order": 1,
-                    "project_id": "proj_analytics",
-                    "title": "Define tracking plan",
-                    "description": "Map out all funnel events for mixpanel.",
-                    "status": "in_progress",
-                    "assigned_to": "Member 4",
-                    "platform": "figma",
-                    "priority": "medium",
-                    "created_at": "2025-06-04T10:00:00Z",
-                },
-            ],
-        }
-
-        # --- NEW DEPENDENCY LOGIC ---
-        from collections import defaultdict
-
-        project_order_tasks = defaultdict(lambda: defaultdict(list))
-
-        for task in tasks_data["tasks"]:
-            pid = task.get("project_id")
-            order = task.get("order")
-            if pid and order:
-                project_order_tasks[pid][order].append(task["id"])
-
-        for task in tasks_data["tasks"]:
-            pid = task.get("project_id")
-            order = task.get("order")
-            task["depends_on"] = []  # type: ignore
-            if pid and order and int(order) > 1:
-                task["depends_on"] = project_order_tasks[pid][int(order) - 1]  # type: ignore
-        # ----------------------------
-
-        with open("tasks.json", "w") as f:
-            json.dump(tasks_data, f, indent=2)
-        print("[STARTUP] tasks.json initialized successfully")
-        sys.stdout.flush()
-    else:
-        print("[STARTUP] tasks.json already exists, skipping initialization")
-        sys.stdout.flush()
-
-
-# Run on startup
-initialize_tasks_file()
-
+# (Legacy initialize_tasks_file removed)
 # =====================================================================
 # DISCORD BOT
 # =====================================================================
@@ -1012,7 +788,7 @@ def get_user_standup_data(member_username: str):
             is_recent_activity = task_id in recent_task_ids
 
             if is_assigned or is_recent_activity:
-                status = (task.state or "").lower()
+                status = (task.status or "").lower()
 
                 task_dict = {
                     "id": task.id,
@@ -1314,8 +1090,8 @@ def update_task_status(task_ref: str, new_status: str) -> bool:
             sys.stdout.flush()
             return False
 
-        old_status = task.state
-        task.state = new_status
+        old_status = task.status
+        task.status = new_status
 
         if not task.history:
             task.history = []
@@ -1610,7 +1386,12 @@ async def get_tasks(project_id: Optional[str] = None):
                 {
                     "id": t.id,
                     "title": t.title,
-                    "status": t.state.lower() if t.state else "todo",
+                    "status": t.status.lower() if t.status else "todo",
+                    "track": t.track,
+                    "description": t.description,
+                    "priority": t.priority,
+                    "updated_at": t.updated_at,
+                    "platform": t.platform,
                     "assigned_to": t.assigned_to,
                     "project_id": t.project_id,
                     "order": t.order,
@@ -1656,7 +1437,12 @@ async def get_single_task(task_id: str):
             return {
                 "id": t.id,
                 "title": t.title,
-                "status": t.state.lower() if t.state else "todo",
+                "status": t.status.lower() if t.status else "todo",
+                "track": t.track,
+                "description": t.description,
+                "priority": t.priority,
+                "updated_at": t.updated_at,
+                "platform": t.platform,
                 "assigned_to": t.assigned_to,
                 "project_id": t.project_id,
                 "order": t.order,
@@ -1679,10 +1465,36 @@ async def create_new_task(request: Request):
     if not task_id:
         return {"error": "'id' field required"}
 
+    track = body.get("track")
+    description = body.get("description")
+    priority = body.get("priority")
+    updated_at = body.get("updated_at")
+    platform = body.get("platform")
+    assigned_to = body.get("assigned_to")
+    project_id = body.get("project_id")
+    depends_on = body.get("depends_on") or body.get("dependencies", [])
+    
     from database import SessionLocal
     from models_sql import TaskTable
 
     created_at = datetime.now(timezone.utc).isoformat()
+    if not updated_at:
+        updated_at = created_at
+
+    new_task = {
+        "id": task_id,
+        "title": title,
+        "status": "todo",
+        "track": track,
+        "description": description,
+        "priority": priority,
+        "updated_at": updated_at,
+        "platform": platform,
+        "assigned_to": assigned_to,
+        "project_id": project_id,
+        "depends_on": depends_on,
+        "created_at": created_at,
+    }
 
     # Save to SQL database
     db = SessionLocal()
@@ -1692,9 +1504,16 @@ async def create_new_task(request: Request):
             new_db_task = TaskTable(
                 id=task_id,
                 title=title,
-                state="TODO",
+                status="TODO",
+                track=track,
+                description=description,
+                priority=priority,
+                updated_at=updated_at,
+                platform=platform,
+                assigned_to=assigned_to,
+                project_id=project_id,
                 created_at=created_at,
-                depends_on=[],
+                depends_on=depends_on,
                 history=[]
             )
             db.add(new_db_task)
@@ -1704,37 +1523,6 @@ async def create_new_task(request: Request):
         db.rollback()
     finally:
         db.close()
-
-    # Save to legacy tasks.json for compatibility
-    filepath = "tasks.json"
-    if not os.path.exists(filepath):
-        initialize_tasks_file()
-    try:
-        with open(filepath, "r") as f:
-            data = json.load(f)
-
-        if not any(t["id"] == task_id for t in data.get("tasks", [])):
-            new_task = {
-                "id": task_id,
-                "title": title,
-                "status": "todo",
-                "created_at": created_at,
-            }
-            data["tasks"].append(new_task)
-            data["total"] = len(data["tasks"])
-
-            with open(filepath, "w") as f:
-                json.dump(data, f, indent=2)
-        else:
-            new_task = next(t for t in data["tasks"] if t["id"] == task_id)
-    except Exception as e:
-        print(f"[API] Error writing to tasks.json: {e}")
-        new_task = {
-            "id": task_id,
-            "title": title,
-            "status": "todo",
-            "created_at": created_at,
-        }
 
     # Broadcast new task creation
     try:
@@ -1753,21 +1541,21 @@ async def create_new_task(request: Request):
     return new_task
 
 
-@app.patch("/tasks/{task_id}/state")
-async def manually_update_task_state(task_id: str, request: Request):
+@app.patch("/tasks/{task_id}/status")
+async def manually_update_task_status(task_id: str, request: Request):
     body = await request.json()
-    new_state = body.get("state")
-    if not new_state:
-        return {"error": "'state' field required"}
+    new_status = body.get("status")
+    if not new_status:
+        return {"error": "'status' field required"}
 
     # Extract just the number for the update function (e.g. "task_001" -> "1")
     task_ref = task_id.replace("task_", "").lstrip("0")
     if not task_ref:
         task_ref = "0"
 
-    success = update_task_status(task_ref, new_state)
+    success = update_task_status(task_ref, new_status)
     if success:
-        return {"status": "success", "message": f"Updated {task_id} to {new_state}"}
+        return {"status": "success", "message": f"Updated {task_id} to {new_status}"}
     return {"error": "Task not found"}
 
 
