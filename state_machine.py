@@ -78,7 +78,7 @@ class Task:
             "title": self.title,
             "status": self.state.value.lower()
             if self.state != TaskState.PENDING
-            else "todo",
+            else "pending",
             "assigned_to": self.assigned_to,
             "project_id": self.project_id,
             "order": self.order,
@@ -93,8 +93,8 @@ class Task:
     @classmethod
     def from_dict(cls, d: dict) -> "Task":
         # Map Member 3's 'status' field back to TaskState Enum
-        raw_status = d.get("status", "todo")
-        if raw_status == "todo":
+        raw_status = d.get("status", "pending")
+        if raw_status == "pending":
             state = TaskState.PENDING
         else:
             state = TaskState(raw_status.upper())
@@ -146,7 +146,7 @@ def load_tasks() -> dict[str, Task]:
             d = {
                 "id": dt.id,
                 "title": dt.title,
-                "status": dt.state.lower() if dt.state else "todo",
+                "status": dt.state.lower() if dt.state else "pending",
                 "assigned_to": dt.assigned_to,
                 "project_id": dt.project_id,
                 "order": dt.order,

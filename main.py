@@ -1087,7 +1087,7 @@ def update_task_status(task_ref: str, new_status: str) -> bool:
     Finds a task by its reference number and updates its status.
 
     task_ref is just the number — "8" finds "task_008"
-    new_status is "completed", "in_progress", or "todo"
+    new_status is "completed", "in_progress", or "pending"
 
     Returns True if task was found and updated.
     Returns False if task was not found.
@@ -1310,7 +1310,7 @@ async def receive_github(request: Request):
         old_status = (
             last_transition.get("from", "PENDING").lower()
             if last_transition.get("from") != "PENDING"
-            else "todo"
+            else "pending"
         )
         new_status = state_change["status"]
 
@@ -1404,7 +1404,7 @@ async def get_tasks(project_id: Optional[str] = None):
                 {
                     "id": t.id,
                     "title": t.title,
-                    "status": t.status.lower() if t.status else "todo",
+                    "status": t.status.lower() if t.status else "pending",
                     "track": t.track,
                     "description": t.description,
                     "priority": t.priority,
@@ -1455,7 +1455,7 @@ async def get_single_task(task_id: str):
             return {
                 "id": t.id,
                 "title": t.title,
-                "status": t.status.lower() if t.status else "todo",
+                "status": t.status.lower() if t.status else "pending",
                 "track": t.track,
                 "description": t.description,
                 "priority": t.priority,
@@ -1502,7 +1502,7 @@ async def create_new_task(request: Request):
     new_task = {
         "id": task_id,
         "title": title,
-        "status": "todo",
+        "status": "pending",
         "track": track,
         "description": description,
         "priority": priority,
@@ -1522,7 +1522,7 @@ async def create_new_task(request: Request):
             new_db_task = TaskTable(
                 id=task_id,
                 title=title,
-                status="TODO",
+                status="PENDING",
                 track=track,
                 description=description,
                 priority=priority,
