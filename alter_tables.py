@@ -33,6 +33,9 @@ def run_migrations():
             
             cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS name VARCHAR;")
             print("Added name to users")
+            
+            cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS skills JSON DEFAULT '[]'::json;")
+            print("Added skills to users")
         except Exception as e:
             print(f"Error altering tables (adding columns): {e}")
 
@@ -61,7 +64,8 @@ def run_migrations():
                 name VARCHAR,
                 email VARCHAR,
                 created_at VARCHAR,
-                updated_at VARCHAR
+                updated_at VARCHAR,
+                skills JSON DEFAULT '[]'::json
             );
             CREATE INDEX IF NOT EXISTS ix_users_username ON users (username);
             CREATE INDEX IF NOT EXISTS ix_users_id ON users (id);

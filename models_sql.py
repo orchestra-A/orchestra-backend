@@ -47,6 +47,7 @@ class UserTable(Base):
     email = Column(String, nullable=True)
     created_at = Column(String)
     updated_at = Column(String)
+    skills = Column(JSON, default=list)
 
 class PlatformIntegrationTable(Base):
     __tablename__ = "platform_integrations"
