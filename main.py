@@ -345,7 +345,8 @@ def save_unified_user_profile(
                 username=primary_username,
                 email=email,
                 created_at=datetime.now(timezone.utc).isoformat(),
-                updated_at=datetime.now(timezone.utc).isoformat()
+                updated_at=datetime.now(timezone.utc).isoformat(),
+                skills=[]
             )
             db.add(user)
             db.flush() # get user.id so we can use it for foreign keys
@@ -2292,6 +2293,7 @@ async def get_users():
                     "platforms_connected": platforms_connected,
                     "created_at": u.created_at,
                     "updated_at": u.updated_at,
+                    "skills": u.skills if u.skills is not None else [],
                 }
             )
         result = {"total": len(safe_profiles), "users": safe_profiles}
@@ -2326,6 +2328,8 @@ async def update_user_put(user_id: str, payload: dict):
             user.name = data["name"]
         if "email" in data:
             user.email = data["email"]
+        if "skills" in data:
+            user.skills = data["skills"]
         
         user.updated_at = datetime.now(timezone.utc).isoformat()
         db.commit()
@@ -2352,6 +2356,8 @@ async def update_user_patch(user_id: str, payload: dict):
             user.name = data["name"]
         if "email" in data:
             user.email = data["email"]
+        if "skills" in data:
+            user.skills = data["skills"]
         
         user.updated_at = datetime.now(timezone.utc).isoformat()
         db.commit()
