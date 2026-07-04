@@ -1432,13 +1432,35 @@ async def get_tasks(project_id: Optional[str] = None):
 @app.get("/graph")
 async def get_graph():
     try:
+        ai_url = os.getenv("GRAPH_API_URL", "https://orchestra-ai-36zm.onrender.com")
+        api_key = os.getenv("INTERNAL_API_KEY", "")
         response = requests.get(
-            "https://orchestra-ai-36zm.onrender.com/graph", timeout=30
+            f"{ai_url}/graph", 
+            headers={"x-api-key": api_key},
+            timeout=30
         )
         response.raise_for_status()
         return response.json()
     except Exception as exc:
         return {"error": str(exc), "nodes": [], "edges": []}
+
+
+@app.post("/blueprint")
+async def proxy_blueprint(request: Request):
+    try:
+        body = await request.json()
+        ai_url = os.getenv("GRAPH_API_URL", "https://orchestra-ai-36zm.onrender.com")
+        api_key = os.getenv("INTERNAL_API_KEY", "")
+        response = requests.post(
+            f"{ai_url}/blueprint",
+            json=body,
+            headers={"x-api-key": api_key},
+            timeout=120
+        )
+        response.raise_for_status()
+        return response.json()
+    except Exception as exc:
+        return {"error": str(exc)}
 
 
 # =====================================================================
