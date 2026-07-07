@@ -42,11 +42,7 @@ app.add_middleware(
 
 @app.on_event("startup")
 async def startup_event():
-    """
-    Runs when FastAPI server starts.
-    Starts the Discord bot as a background task.
-    Bot runs alongside your server forever.
-    """
+    # Runs when FastAPI server starts. Starts the Discord bot as a background task.
     print("[STARTUP] Server starting...")
     sys.stdout.flush()
 
@@ -80,8 +76,7 @@ async def shutdown_event():
 
 
 # =====================================================================
-# Environment Variables
-# GitHub & Discord OAuth credentials — stored in .env file
+# Environment Variables — stored in .env file
 # =====================================================================
 GITHUB_CLIENT_ID = os.getenv("GITHUB_CLIENT_ID")
 GITHUB_CLIENT_SECRET = os.getenv("GITHUB_CLIENT_SECRET")
@@ -96,17 +91,7 @@ BACKEND_URL = os.getenv("BACKEND_URL", "http://localhost:8000")
 # =====================================================================
 # WEBSOCKET CONNECTION MANAGER
 # =====================================================================
-# This is the broadcast system.
-#
-# Imagine a WhatsApp group called "Task Updates".
-# Every browser tab that opens Timeline Orchestra joins this group.
-# When a task changes status, your server sends a message to the group.
-# Every browser in the group receives it instantly.
-#
-# active_connections = the list of all browsers currently open
-# connect()         = adds a browser to the group when it opens
-# disconnect()      = removes a browser when it closes the tab
-# broadcast()       = sends a message to every browser in the group
+# Broadcast system: all connected browsers receive task updates instantly.
 # =====================================================================
 class ConnectionManager:
     def __init__(self):
@@ -160,32 +145,12 @@ class ConnectionManager:
 manager = ConnectionManager()
 
 # =====================================================================
-# STARTUP — Initialize tasks.json
-# =====================================================================
-# When server starts, if tasks.json doesn't exist yet,
-# create it from our hardcoded task list.
-# This gives the State Machine something to read and update.
-# =====================================================================
-# =====================================================================
 # GITHUB WEBHOOK AUTO-REGISTRATION HELPERS
 # =====================================================================
 
 
 def generate_user_webhook_secret(github_username: str) -> str:
-    """
-    Generates a unique webhook secret for each user.
-
-    Why unique per user
-    When 100 different teams connect their GitHub repos,
-    each team's events need to be verified separately.
-    If everyone shared one secret and it leaked, all teams
-    would be compromised. Unique secrets isolate the damage.
-
-    How it works:
-    Combines your master secret key with the username
-    and creates a unique hash. Same username always
-    produces the same secret — so you can verify later.
-    """
+    # Generates a unique webhook secret per user using HMAC-SHA256.
     combined = f"{GITHUB_WEBHOOK_SECRET_KEY}:{github_username}"
     return hmac.new(
         GITHUB_WEBHOOK_SECRET_KEY.encode(), combined.encode(), hashlib.sha256
@@ -195,17 +160,7 @@ def generate_user_webhook_secret(github_username: str) -> str:
 async def register_github_webhook(
     access_token: str, github_username: str, repo_full_name: str
 ) -> dict:
-    """
-    Automatically registers a webhook on the user's GitHub repo.
-
-    This is called after OAuth login completes.
-    The user never has to manually go to GitHub settings.
-    Orchestra does it for them automatically.
-
-    access_token   = the token GitHub gave us after OAuth
-    github_username = their GitHub username
-    repo_full_name  = "username/repo-name" format
-    """
+    # Auto-registers a webhook on the user's GitHub repo after OAuth login.
     import httpx
 
     # Generate a unique secret for this user
@@ -278,9 +233,7 @@ async def register_github_webhook(
 def save_connected_user(
     github_username: str, access_token: str, repo_full_name: str, webhook_result: dict
 ) -> None:
-    """
-    Saves the connected user's information to the database.
-    """
+    # Saves the connected user's information to the database.
     save_unified_user_profile(
         github_username=github_username,
         github_access_token=access_token,
@@ -291,9 +244,7 @@ def save_connected_user(
 def save_discord_user(
     discord_id: str, discord_username: str, access_token: str, email: Optional[str] = None
 ) -> None:
-    """
-    Saves a Discord connected user to the database.
-    """
+    # Saves a Discord connected user to the database.
     save_unified_user_profile(
         discord_id=discord_id,
         discord_username=discord_username,
@@ -316,9 +267,7 @@ def save_unified_user_profile(
     google_picture: Optional[str] = None,
     google_access_token: Optional[str] = None,
 ) -> dict:
-    """
-    Creates or updates a unified user profile in the database using the dynamic PlatformIntegration table.
-    """
+    # Creates or updates a unified user profile in the database using the dynamic PlatformIntegration table.
     from database import SessionLocal
     from models_sql import UserTable, PlatformIntegrationTable
     from sqlalchemy.orm.attributes import flag_modified
@@ -434,17 +383,7 @@ def save_unified_user_profile(
 
 
 def update_member_activity(actor: str, content: str, timestamp: str) -> None:
-    """
-    Updates what each team member is working on.
-    Called every time a Discord message arrives.
-
-    Builds a picture like:
-    "Arjun is working on: Just finished the login page"
-
-    This is what gets shown on the Orchestra dashboard as:
-    Member X is doing: ----
-    Member Y is doing: ----
-    """
+    # Updates each team member's activity in discord_activity.json when a Discord message arrives.
     filepath = "discord_activity.json"
 
     if os.path.exists(filepath):
@@ -472,27 +411,7 @@ INTERNAL_API_KEY = os.getenv("INTERNAL_API_KEY", "")
 
 
 def sync_task_status_to_neo4j(task_id: str, status: str) -> bool:
-    """
-    Pushes a task status update to the Neo4j-backed AI service.
-
-    WHY THIS EXISTS:
-    Postgres is the source of truth for task data. Neo4j is a
-    separate database that Clover (the AI chatbot) reads from to
-    answer questions about project status. Without this function,
-    Neo4j never finds out when a task changes — so Clover gives
-    stale answers.
-
-    WHY IT'S SYNCHRONOUS (uses requests, not httpx):
-    The 'requests' library blocks the entire thread while waiting
-    for a response. Since state_machine.py calls this from inside
-    a synchronous function (save_tasks), we keep this function
-    synchronous too. The async wrapping happens at the call site
-    using asyncio.to_thread(), which runs this blocking function
-    in a separate thread so it doesn't freeze the main server.
-
-    Returns True if Neo4j was updated successfully, False otherwise.
-    Never raises — a sync failure should never crash the State Machine.
-    """
+    # Syncs task status to Neo4j for Clover AI; uses synchronous requests to match state_machine.py's sync call path.
     if not GRAPH_API_URL or not INTERNAL_API_KEY:
         print("[GRAPH SYNC] ⚠️ Missing GRAPH_API_URL or INTERNAL_API_KEY — skipping sync")
         sys.stdout.flush()
@@ -546,17 +465,7 @@ def sync_task_status_to_neo4j(task_id: str, status: str) -> bool:
 # =====================================================================
 # DISCORD BOT
 # =====================================================================
-# This bot runs as a background task inside your FastAPI server.
-# When your server starts, the bot logs in to Discord automatically.
-#
-# What the bot does:
-# 1. Sits in your team's Discord server
-# 2. Reads every message sent in the channels it can see
-# 3. Forwards messages to your /webhook/discord logic directly
-# 4. Sends daily standup summaries (Step 4 — built next)
-#
-# Think of it as a team member who never sleeps and reads
-# every message in the Discord server and reports it to Orchestra.
+# Discord bot runs as a background task inside FastAPI, reading messages and forwarding them.
 # =====================================================================
 
 # Set up Discord bot with all necessary permissions
@@ -572,10 +481,7 @@ bot = discord.Client(intents=intents)
 
 @bot.event
 async def on_ready():
-    """
-    Fires when bot successfully logs in to Discord.
-    Think of it like the bot saying "I'm here, ready to work."
-    """
+    # Fires when bot successfully logs in to Discord.
     print(f"[DISCORD BOT] ✅ Bot logged in as: {bot.user.name}")
     print(f"[DISCORD BOT] Connected to {len(bot.guilds)} server(s)")
     for guild in bot.guilds:
@@ -645,11 +551,7 @@ async def on_message(message):
 
 
 async def start_discord_bot():
-    """
-    Starts the Discord bot.
-    Called when FastAPI server starts up.
-    Runs forever in the background alongside your server.
-    """
+    # Starts the Discord bot when FastAPI server starts up.
     if not DISCORD_BOT_TOKEN:
         print("[DISCORD BOT] ⚠️ No bot token found. Bot not starting.")
         print("[DISCORD BOT] Add DISCORD_BOT_TOKEN to your .env file")
@@ -1058,17 +960,7 @@ def process_and_save(platform: str, event_type: str, payload: dict) -> Normalize
 
 
 def extract_task_references(commit_message: str) -> list:
-    """
-    Scans a commit message for task references.
-
-    Recognized patterns:
-    - "Fixes Task #8"       → task_008
-    - "Closes #3"           → task_003
-    - "Resolves task_005"   → task_005
-    - "fixes task 12"       → task_012
-
-    Returns a list of task IDs found in the message.
-    """
+    # Scans a commit message for task references like "Fixes Task #8", returns found task IDs.
     patterns = [
         r"(?::fixes|closes|resolves)\s+task[_\s#]+(\d+)",
         r"(?::fixes|closes|resolves)\s+#(\d+)",
@@ -1083,15 +975,7 @@ def extract_task_references(commit_message: str) -> list:
 
 
 def update_task_status(task_ref: str, new_status: str) -> bool:
-    """
-    Finds a task by its reference number and updates its status.
-
-    task_ref is just the number — "8" finds "task_008"
-    new_status is "completed", "in_progress", or "todo"
-
-    Returns True if task was found and updated.
-    Returns False if task was not found.
-    """
+    # Finds a task by its reference number (e.g. "8" -> "task_008") and updates its status.
     from database import SessionLocal
     from models_sql import TaskTable
     from sqlalchemy.orm.attributes import flag_modified
@@ -1134,12 +1018,7 @@ def update_task_status(task_ref: str, new_status: str) -> bool:
         # Sync to Neo4j Graph DB
         sync_task_status_to_neo4j(full_task_id, new_status)
 
-        # ── WEBSOCKET BROADCAST ────────────────────────────────
-        # The moment a task status changes, tell every connected
-        # browser about it immediately.
-        # Member 5's frontend listens for this and changes the
-        # task node color on screen without any page refresh.
-        # ──────────────────────────────────────────────────────
+        # Broadcasts task status change to all connected browsers for live UI updates.
         try:
             asyncio.create_task(
                 manager.broadcast(
@@ -1202,12 +1081,7 @@ async def simulate_webhook(request: Request):
 # =====================================================================
 # Route 4 — GitHub Webhook Receiver + State Machine
 # =====================================================================
-# When GitHub sends a push event, this route:
-# 1. Logs the raw payload
-# 2. Reads every commit message
-# 3. Looks for task references like "Fixes Task #8"
-# 4. Automatically updates matching tasks to "completed"
-# 5. Normalizes and saves the event
+# Handles GitHub push events: logs, extracts task refs, auto-updates matching tasks, and saves.
 # =====================================================================
 @app.post("/webhook/github")
 async def receive_github(request: Request):
@@ -1383,8 +1257,7 @@ async def receive_figma(request: Request):
 # =====================================================================
 # Route 7 — Local Tasks Endpoint
 # =====================================================================
-# Returns tasks from local tasks.json.
-# This ensures Member 3's UI sees the latest State Machine updates.
+# Returns tasks from the database for the frontend UI.
 # =====================================================================
 @app.get("/tasks")
 async def get_tasks(project_id: Optional[str] = None):
@@ -1438,6 +1311,49 @@ async def get_graph():
         return response.json()
     except Exception as exc:
         return {"error": str(exc), "nodes": [], "edges": []}
+
+
+# =====================================================================
+# Route: GET /team
+# =====================================================================
+# Proxies frontend requests to the AI service for team/skills data, keeping INTERNAL_API_KEY server-side.
+@app.get("/team")
+async def get_team():
+    import httpx
+    from fastapi.responses import JSONResponse
+    
+    ai_service_url = os.getenv("AI_SERVICE_URL", "https://orchestra-ai-36zm.onrender.com")
+    internal_api_key = os.getenv("INTERNAL_API_KEY", "")
+    
+    if not internal_api_key:
+        print("[TEAM] ❌ Missing INTERNAL_API_KEY")
+        sys.stdout.flush()
+        return JSONResponse(status_code=500, content={"error": "AI service not configured"})
+        
+    print("[TEAM] 🔄 Forwarding team request to AI service")
+    sys.stdout.flush()
+    
+    try:
+        async with httpx.AsyncClient() as client:
+            response = await client.get(
+                f"{ai_service_url}/team",
+                headers={"x-api-key": internal_api_key},
+                timeout=30.0
+            )
+            
+        if response.status_code != 200:
+            print(f"[TEAM] ❌ AI service returned non-200: {response.status_code}")
+            sys.stdout.flush()
+            return JSONResponse(status_code=502, content={"error": "AI service error", "detail": response.text})
+            
+        print("[TEAM] ✅ Team data received, returning to frontend")
+        sys.stdout.flush()
+        return JSONResponse(status_code=200, content=response.json())
+        
+    except httpx.RequestError as e:
+        print(f"[TEAM] ❌ Network error or timeout: {str(e)}")
+        sys.stdout.flush()
+        return JSONResponse(status_code=504, content={"error": "AI service timeout or unreachable"})
 
 
 # =====================================================================
@@ -1668,28 +1584,7 @@ async def get_events():
 # =====================================================================
 # Route 9 — WebSocket Live Connection
 # =====================================================================
-# This is the permanent open phone line browsers connect to.
-#
-# HOW IT WORKS:
-# 1. Member 5's frontend connects to this URL once when page loads
-# 2. Connection stays open as long as the browser tab is open
-# 3. When any task updates, manager.broadcast() fires automatically
-# 4. This route pushes the update to Member 5's browser instantly
-# 5. Member 5's code uses task_id to find the node and change color
-#
-# WHAT MEMBER 5 RECEIVES (automatically, no request needed):
-# {
-#   "type": "task_updated",
-#   "task_id": "task_008",
-#   "old_status": "in_progress",
-#   "new_status": "completed",
-#   "timestamp": "2025-06-03T10:00:00Z"
-# }
-#
-# URL TO GIVE MEMBER 5:
-# wss://orchestra-backend-30fy.onrender.com/ws
-#
-# NOTE: wss:// is the secure version of ws:// — same as https vs http
+# WebSocket endpoint — persistent connection for live task update broadcasts to the frontend.
 # =====================================================================
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
@@ -1731,9 +1626,7 @@ async def websocket_endpoint(websocket: WebSocket):
 # =====================================================================
 # Route — GitHub OAuth Login
 # =====================================================================
-# User clicks "Connect GitHub" on the frontend.
-# This redirects them to GitHub's authorization page.
-# After approval, GitHub redirects back to /auth/github/callback
+# Redirects user to GitHub's OAuth authorization page.
 # =====================================================================
 @app.get("/auth/github")
 async def github_login(repo: Optional[str] = None, user_id: Optional[str] = None):
@@ -1764,12 +1657,7 @@ async def github_login(repo: Optional[str] = None, user_id: Optional[str] = None
 # =====================================================================
 # Route — GitHub OAuth Callback
 # =====================================================================
-# GitHub redirects here after user approves access.
-# We exchange the code for a token, get their profile,
-# then automatically register a webhook on their repo.
-#
-# User passes their repo like this:
-# /auth/github/callbackcode=XXX&repo=username/reponame
+# GitHub OAuth callback: exchanges code for token, gets profile, registers webhook on their repo.
 # =====================================================================
 @app.get("/auth/github/callback")
 async def github_callback(code: Optional[str] = None, state: Optional[str] = None, error: Optional[str] = None, error_description: Optional[str] = None):
@@ -1865,7 +1753,6 @@ async def github_callback(code: Optional[str] = None, state: Optional[str] = Non
 # =====================================================================
 # Route — View Connected Users
 # =====================================================================
-# GET /connected-users
 # Shows all users who connected their GitHub to Orchestra.
 # =====================================================================
 @app.get("/connected-users")
@@ -1895,18 +1782,10 @@ async def get_connected_users():
     finally:
         db.close()
 
-
 # =====================================================================
 # Route — Discord OAuth Login
 # =====================================================================
-# User clicks "Login with Discord" on the frontend.
-# This redirects them to Discord's authorization page.
-#
-# Scopes we request:
-# identify  = get their username and Discord ID
-# email     = get their email address
-# guilds    = see which Discord servers they are in
-#             (needed later for bot to join their server)
+# Redirects user to Discord's OAuth authorization page with identify/email/guilds scopes.
 # =====================================================================
 @app.get("/auth/discord")
 async def discord_login(user_id: Optional[str] = None):
@@ -1929,16 +1808,7 @@ async def discord_login(user_id: Optional[str] = None):
 # =====================================================================
 # Route — Discord OAuth Callback
 # =====================================================================
-# Discord redirects here after user approves access.
-# We exchange the code for a token and get their profile.
-#
-# What "identify" scope gives us:
-# - id          = their unique Discord ID (like "799906716887679028")
-# - username    = their Discord username (like "moonknight6006")
-# - avatar      = their profile picture
-# - email       = their email (if they approved email scope)
-#
-# We save all this to discord_users.json for the bot to use later.
+# Discord OAuth callback: exchanges code for token, gets profile, saves to database.
 # =====================================================================
 @app.get("/auth/discord/callback")
 async def discord_callback(code: Optional[str] = None, state: Optional[str] = None, error: Optional[str] = None, error_description: Optional[str] = None):
@@ -2016,7 +1886,6 @@ async def discord_callback(code: Optional[str] = None, state: Optional[str] = No
         redirect_url += "&isNewUser=true"
     return RedirectResponse(url=redirect_url)
 
-
 # =====================================================================
 # Route — View Discord Connected Users
 # =====================================================================
@@ -2057,16 +1926,7 @@ async def get_discord_users():
 # =====================================================================
 # Route — Google OAuth Login
 # =====================================================================
-# User clicks "Sign in with Google" on the frontend.
-# This redirects them to Google's authorization page.
-#
-# Scopes we request:
-# openid   = standard OAuth identity
-# email    = their Gmail address
-# profile  = their name and profile picture
-#
-# We pass user_id as state so if an existing user is adding Google
-# as a second login method, we can link it to their existing profile.
+# Redirects user to Google's OAuth authorization page with openid/email/profile scopes.
 # =====================================================================
 @app.get("/auth/google")
 async def google_login(user_id: Optional[str] = None):
@@ -2087,22 +1947,10 @@ async def google_login(user_id: Optional[str] = None):
     )
     return RedirectResponse(google_auth_url)
 
-
 # =====================================================================
 # Route — Google OAuth Callback
 # =====================================================================
-# Google redirects here after user approves access.
-# We exchange the code for tokens, get their profile,
-# and save them to the unified user profile system.
-#
-# What we get from Google:
-# - sub      = their unique Google ID (like "117834521...")
-# - email    = their Gmail address
-# - name     = their full name
-# - picture  = their profile photo URL
-#
-# After this we redirect to frontend with user info in URL params
-# just like GitHub and Discord callbacks do.
+# Google OAuth callback: exchanges code for tokens, gets profile, saves to unified user profile.
 # =====================================================================
 @app.get("/auth/google/callback")
 async def google_callback(code: str, state: Optional[str] = None):
@@ -2172,8 +2020,7 @@ async def google_callback(code: str, state: Optional[str] = None):
         except Exception:
             pass
 
-    # Step 4 — Save to unified user profile
-    # This links Google identity to any existing GitHub/Discord profile
+    # Step 4 — Save to unified user profile (links to any existing GitHub/Discord profile)
     user_profile = save_unified_user_profile(
         email=email,
         existing_user_id=existing_user_id,
@@ -2200,13 +2047,10 @@ async def google_callback(code: str, state: Optional[str] = None):
 
     return RedirectResponse(url=redirect_url)
 
-
 # =====================================================================
 # Route — View Google Connected Users
 # =====================================================================
-# GET /google-users
-# Shows all users who signed in with Google.
-# Access tokens never exposed in response.
+# Shows all users who signed in with Google (access tokens never exposed).
 # =====================================================================
 @app.get("/google-users")
 async def get_google_users():
@@ -2257,10 +2101,7 @@ async def get_google_users():
 # =====================================================================
 # Route — View Unified User Profiles
 # =====================================================================
-# GET /users
-# Shows all users with their connected platforms.
-# This is the master identity record.
-# Member 6 uses this to show which platforms each user has connected.
+# Shows all users with their connected platforms (master identity record).
 # =====================================================================
 @app.get("/users")
 async def get_users():
@@ -2304,7 +2145,6 @@ async def get_users():
 # =====================================================================
 # Route — Update User Profile
 # =====================================================================
-# PUT /users/{user_id} & PATCH /users/{user_id}
 # Updates user profile information.
 # =====================================================================
 @app.put("/users/{user_id}")
@@ -2363,14 +2203,7 @@ async def update_user_patch(user_id: str, payload: dict):
 # =====================================================================
 # Route — Discord Activity Summary
 # =====================================================================
-# GET /discord/activity
-#
-# Shows what each team member is currently working on
-# based on their Discord messages.
-#
-# This is displayed on Orchestra dashboard as:
-# "Member X is doing: GUI and Visualizer work"
-# "Member Y is doing: utility integration"
+# Shows what each team member is currently working on based on Discord messages.
 # =====================================================================
 @app.get("/discord/activity")
 async def get_discord_activity():
@@ -2408,9 +2241,7 @@ async def get_discord_activity():
 # =====================================================================
 # Route 10 — Discord & GitHub Commit Intel (GET /commit-intel)
 # =====================================================================
-# Correlates Discord active members' latest messages with actual GitHub
-# commit/PR activity, so the team can see what is being discussed in
-# Discord vs what commits are actually happening in one place.
+# Correlates Discord messages with GitHub commit/PR activity for unified team intel.
 # =====================================================================
 @app.get("/commit-intel")
 async def get_commit_intel():
@@ -2489,15 +2320,10 @@ async def test_standup():
 # =====================================================================
 # Route — Trigger Daily Standup Manually
 # =====================================================================
-# GET /test-daily-standup
-#
-# Triggers the daily standup logic instantly for testing.
-# Normally runs automatically at 9:00 AM.
+# Triggers the daily standup logic instantly for testing (normally runs at 9:00 AM).
 # =====================================================================
 @app.get("/test-daily-standup")
 async def test_daily_standup():
-    """
-    Manually triggers the daily standup routine in the background.
-    """
+    # Manually triggers the daily standup routine in the background.
     asyncio.create_task(run_daily_standup())
     return {"status": "success", "message": "Daily standup triggered in background."}
