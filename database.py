@@ -22,12 +22,27 @@ SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
 
 
+from sqlalchemy import text
+from sqlalchemy.exc import OperationalError
+import time
+
 def get_db():
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
+    retries = 3
+    for attempt in range(retries):
+        db = SessionLocal()
+        try:
+            # Wake up the Neon database and test the connection
+            db.execute(text("SELECT 1"))
+            yield db
+            break  # If successful, exit the retry loop
+        except OperationalError as e:
+            if "neon:retryable" in str(e) and attempt < retries - 1:
+                db.close()
+                time.sleep(1)  # Wait for Neon DB to wake up before retrying
+                continue
+            raise
+        finally:
+            db.close()
 
 
 # Trigger Render redeploy for DB connection verification
