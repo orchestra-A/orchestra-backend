@@ -4,6 +4,7 @@ import json
 import sys
 import os
 from fastapi import FastAPI, Request
+from fastapi.responses import RedirectResponse
 from fastapi.websockets import WebSocket, WebSocketDisconnect
 from typing import List, Optional
 import asyncio
@@ -91,6 +92,7 @@ DISCORD_BOT_TOKEN = os.getenv("DISCORD_BOT_TOKEN")
 GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID")
 GOOGLE_CLIENT_SECRET = os.getenv("GOOGLE_CLIENT_SECRET")
 BACKEND_URL = os.getenv("BACKEND_URL", "http://localhost:8000")
+FRONTEND_URL = os.getenv("FRONTEND_URL", "https://orchestra-frontend-roan.vercel.app")
 
 # =====================================================================
 # WEBSOCKET CONNECTION MANAGER
@@ -1366,6 +1368,106 @@ async def get_team():
 
 
 # =====================================================================
+# Route: POST /blueprint
+# =====================================================================
+# Proxies frontend roadmap requests to the AI service, keeping INTERNAL_API_KEY server-side.
+# =====================================================================
+@app.post("/blueprint")
+async def proxy_blueprint(request: Request):
+    import httpx
+    from fastapi.responses import JSONResponse
+    
+    ai_service_url = os.getenv("AI_SERVICE_URL", os.getenv("GRAPH_API_URL", "https://orchestra-ai-36zm.onrender.com"))
+    internal_api_key = os.getenv("INTERNAL_API_KEY", "")
+    
+    if not internal_api_key:
+        print("[BLUEPRINT] ❌ Missing INTERNAL_API_KEY")
+        sys.stdout.flush()
+        return JSONResponse(status_code=500, content={"error": "AI service not configured"})
+        
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+        
+    print("[BLUEPRINT] 🔄 Forwarding blueprint request to AI service")
+    sys.stdout.flush()
+    
+    try:
+        async with httpx.AsyncClient() as client:
+            response = await client.post(
+                f"{ai_service_url}/blueprint",
+                json=body,
+                headers={"x-api-key": internal_api_key},
+                timeout=120.0
+            )
+            
+        if response.status_code != 200:
+            print(f"[BLUEPRINT] ❌ AI service returned non-200: {response.status_code}")
+            sys.stdout.flush()
+            return JSONResponse(status_code=response.status_code, content={"error": "AI service error", "detail": response.text})
+            
+        print("[BLUEPRINT] ✅ Blueprint data received, returning to frontend")
+        sys.stdout.flush()
+        return JSONResponse(status_code=200, content=response.json())
+        
+    except httpx.RequestError as e:
+        print(f"[BLUEPRINT] ❌ Network error or timeout: {str(e)}")
+        sys.stdout.flush()
+        return JSONResponse(status_code=504, content={"error": "AI service timeout or unreachable"})
+
+
+# =====================================================================
+# Route: POST /clover
+# =====================================================================
+# Proxies frontend chat requests to the Clover AI assistant, keeping INTERNAL_API_KEY server-side.
+# =====================================================================
+@app.post("/clover")
+async def proxy_clover(request: Request):
+    import httpx
+    from fastapi.responses import JSONResponse
+    
+    ai_service_url = os.getenv("AI_SERVICE_URL", os.getenv("GRAPH_API_URL", "https://orchestra-ai-36zm.onrender.com"))
+    internal_api_key = os.getenv("INTERNAL_API_KEY", "")
+    
+    if not internal_api_key:
+        print("[CLOVER] ❌ Missing INTERNAL_API_KEY")
+        sys.stdout.flush()
+        return JSONResponse(status_code=500, content={"error": "AI service not configured"})
+        
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+        
+    print("[CLOVER] 🔄 Forwarding clover request to AI service")
+    sys.stdout.flush()
+    
+    try:
+        async with httpx.AsyncClient() as client:
+            response = await client.post(
+                f"{ai_service_url}/clover",
+                json=body,
+                headers={"x-api-key": internal_api_key},
+                timeout=120.0
+            )
+            
+        if response.status_code != 200:
+            print(f"[CLOVER] ❌ AI service returned non-200: {response.status_code}")
+            sys.stdout.flush()
+            return JSONResponse(status_code=response.status_code, content={"error": "AI service error", "detail": response.text})
+            
+        print("[CLOVER] ✅ Clover response received, returning to frontend")
+        sys.stdout.flush()
+        return JSONResponse(status_code=200, content=response.json())
+        
+    except httpx.RequestError as e:
+        print(f"[CLOVER] ❌ Network error or timeout: {str(e)}")
+        sys.stdout.flush()
+        return JSONResponse(status_code=504, content={"error": "AI service timeout or unreachable"})
+
+
+# =====================================================================
 # Route 7.2 — Task CRUD Endpoints (Week 3 Day 2)
 # =====================================================================
 @app.get("/tasks/{task_id}")
@@ -1670,9 +1772,7 @@ async def github_login(repo: Optional[str] = None, user_id: Optional[str] = None
 # =====================================================================
 @app.get("/auth/github/callback")
 async def github_callback(code: Optional[str] = None, state: Optional[str] = None, error: Optional[str] = None, error_description: Optional[str] = None):
-    from fastapi.responses import RedirectResponse
-    import os
-    frontend_url = os.getenv("FRONTEND_URL", "http://localhost:5173")
+    frontend_url = FRONTEND_URL
 
     if error or not code:
         err_msg = error_description or error or "missing_code"
@@ -1821,9 +1921,7 @@ async def discord_login(user_id: Optional[str] = None):
 # =====================================================================
 @app.get("/auth/discord/callback")
 async def discord_callback(code: Optional[str] = None, state: Optional[str] = None, error: Optional[str] = None, error_description: Optional[str] = None):
-    from fastapi.responses import RedirectResponse
-    import os
-    frontend_url = os.getenv("FRONTEND_URL", "http://localhost:5173")
+    frontend_url = FRONTEND_URL
 
     if error or not code:
         err_msg = error_description or error or "missing_code"
@@ -1967,7 +2065,7 @@ async def google_callback(code: str, state: Optional[str] = None):
     import httpx
     import urllib.parse
 
-    frontend_url = os.getenv("FRONTEND_URL", "http://localhost:5173")
+    frontend_url = FRONTEND_URL
 
     async with httpx.AsyncClient() as client:
 
