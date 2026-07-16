@@ -27,3 +27,5 @@ pyrightconfig.json
 # Test scripts
 test_endpoints_script.py
 test_live_webhooks.py
+
+seed_tasks.py
