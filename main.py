@@ -1397,7 +1397,7 @@ class BlueprintRequest(BaseModel):
 # Proxies frontend roadmap requests to the AI service, keeping INTERNAL_API_KEY server-side.
 # =====================================================================
 @app.post("/blueprint")
-async def proxy_blueprint(request: BlueprintRequest):
+async def proxy_blueprint(request: Request):
     import httpx
     from fastapi.responses import JSONResponse
     
@@ -1409,7 +1409,10 @@ async def proxy_blueprint(request: BlueprintRequest):
         sys.stdout.flush()
         return JSONResponse(status_code=500, content={"error": "AI service not configured"})
         
-    body = request.model_dump()
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
         
     print("[BLUEPRINT] 🔄 Forwarding blueprint request to AI service")
     sys.stdout.flush()
@@ -1448,7 +1451,7 @@ class CloverRequest(BaseModel):
 # Proxies frontend chat requests to the Clover AI assistant, keeping INTERNAL_API_KEY server-side.
 # =====================================================================
 @app.post("/clover")
-async def proxy_clover(request: CloverRequest):
+async def proxy_clover(request: Request):
     import httpx
     from fastapi.responses import JSONResponse
     
@@ -1460,7 +1463,10 @@ async def proxy_clover(request: CloverRequest):
         sys.stdout.flush()
         return JSONResponse(status_code=500, content={"error": "AI service not configured"})
         
-    body = request.model_dump()
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
         
     print("[CLOVER] 🔄 Forwarding clover request to AI service")
     sys.stdout.flush()
