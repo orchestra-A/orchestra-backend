@@ -274,12 +274,13 @@ def save_unified_user_profile(
     google_access_token: Optional[str] = None,
 ) -> dict:
     # Creates or updates a unified user profile in the database using the dynamic PlatformIntegration table.
-    from database import SessionLocal
+    from database import SessionLocal, get_db
     from models_sql import UserTable, PlatformIntegrationTable
     from sqlalchemy.orm.attributes import flag_modified
     import uuid
 
-    db = SessionLocal()
+    # Use get_db() to ensure Neon DB is awake, then just take the session.
+    db = next(get_db())
     try:
         # 1. Find or create UserTable
         user = None
@@ -1819,10 +1820,13 @@ async def github_callback(code: Optional[str] = None, state: Optional[str] = Non
     if state:
         try:
             state_dict = json.loads(urllib.parse.unquote(state))
-            repo = state_dict.get("repo")
-            existing_user_id = state_dict.get("user_id")
-            if state_dict.get("return_url"):
-                frontend_url = state_dict.get("return_url")
+            if isinstance(state_dict, dict):
+                repo = state_dict.get("repo")
+                existing_user_id = state_dict.get("user_id")
+                if state_dict.get("return_url"):
+                    frontend_url = state_dict.get("return_url")
+            else:
+                repo = urllib.parse.unquote(state)
         except Exception:
             # Fallback for old simple string state
             repo = urllib.parse.unquote(state)
@@ -1830,6 +1834,10 @@ async def github_callback(code: Optional[str] = None, state: Optional[str] = Non
     if error or not code:
         err_msg = error_description or error or "missing_code"
         return RedirectResponse(url=f"{frontend_url}/oauth/callback?platform=github&error={err_msg}")
+
+    if not GITHUB_CLIENT_ID or not GITHUB_CLIENT_SECRET:
+        print("[GITHUB AUTH] ❌ Missing GitHub client credentials.")
+        return RedirectResponse(url=f"{frontend_url}/oauth/callback?platform=github&error=server_error")
 
     import httpx
 
@@ -1978,15 +1986,22 @@ async def discord_callback(code: Optional[str] = None, state: Optional[str] = No
     if state:
         try:
             state_dict = json.loads(urllib.parse.unquote(state))
-            existing_user_id = state_dict.get("user_id")
-            if state_dict.get("return_url"):
-                frontend_url = state_dict.get("return_url")
+            if isinstance(state_dict, dict):
+                existing_user_id = state_dict.get("user_id")
+                if state_dict.get("return_url"):
+                    frontend_url = state_dict.get("return_url")
+            else:
+                existing_user_id = urllib.parse.unquote(state)
         except Exception:
             existing_user_id = urllib.parse.unquote(state)
 
     if error or not code:
         err_msg = error_description or error or "missing_code"
         return RedirectResponse(url=f"{frontend_url}/oauth/callback?platform=discord&error={err_msg}")
+
+    if not DISCORD_CLIENT_ID or not DISCORD_CLIENT_SECRET:
+        print("[DISCORD AUTH] ❌ Missing Discord client credentials.")
+        return RedirectResponse(url=f"{frontend_url}/oauth/callback?platform=discord&error=server_error")
 
     import httpx
 
@@ -2129,7 +2144,7 @@ async def google_login(request: Request, user_id: Optional[str] = None, return_u
 # Google OAuth callback: exchanges code for tokens, gets profile, saves to unified user profile.
 # =====================================================================
 @app.get("/auth/google/callback")
-async def google_callback(code: str, state: Optional[str] = None):
+async def google_callback(code: Optional[str] = None, state: Optional[str] = None, error: Optional[str] = None, error_description: Optional[str] = None):
     from fastapi.responses import RedirectResponse
     import httpx
     import urllib.parse
@@ -2141,11 +2156,22 @@ async def google_callback(code: str, state: Optional[str] = None):
     if state:
         try:
             state_dict = json.loads(urllib.parse.unquote(state))
-            existing_user_id = state_dict.get("user_id")
-            if state_dict.get("return_url"):
-                frontend_url = state_dict.get("return_url")
+            if isinstance(state_dict, dict):
+                existing_user_id = state_dict.get("user_id")
+                if state_dict.get("return_url"):
+                    frontend_url = state_dict.get("return_url")
+            else:
+                existing_user_id = urllib.parse.unquote(state)
         except Exception:
             existing_user_id = urllib.parse.unquote(state)
+
+    if error or not code:
+        err_msg = error_description or error or "missing_code"
+        return RedirectResponse(url=f"{frontend_url}/oauth/callback?platform=google&error={err_msg}")
+
+    if not GOOGLE_CLIENT_ID or not GOOGLE_CLIENT_SECRET:
+        print("[GOOGLE AUTH] ❌ Missing Google client credentials.")
+        return RedirectResponse(url=f"{frontend_url}/oauth/callback?platform=google&error=server_error")
 
     async with httpx.AsyncClient() as client:
 
