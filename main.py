@@ -274,16 +274,19 @@ def save_unified_user_profile(
     google_access_token: Optional[str] = None,
 ) -> dict:
     # Creates or updates a unified user profile in the database using the dynamic PlatformIntegration table.
-    from database import SessionLocal, get_db
+    from database import SessionLocal
     from models_sql import UserTable, PlatformIntegrationTable
     from sqlalchemy.orm.attributes import flag_modified
+    from sqlalchemy.exc import OperationalError
     import uuid
+    import time
 
-    # Use get_db() to ensure Neon DB is awake, then just take the session.
-    db = next(get_db())
-    try:
-        # 1. Find or create UserTable
-        user = None
+    retries = 3
+    for attempt in range(retries):
+        db = SessionLocal()
+        try:
+            # 1. Find or create UserTable
+            user = None
         if existing_user_id:
             user = db.query(UserTable).filter_by(id=existing_user_id).first()
         if not user and email:
@@ -381,6 +384,13 @@ def save_unified_user_profile(
             "email": user.email,
             "is_new_user": not is_fully_onboarded
         }
+    except OperationalError as e:
+        db.rollback()
+        if "neon:retryable" in str(e) and attempt < retries - 1:
+            time.sleep(1)
+            continue
+        print(f"[USER PROFILE] ❌ OperationalError: {e}")
+        raise e
     except Exception as e:
         print(f"[USER PROFILE] ❌ Failed to save user profile: {e}")
         db.rollback()
