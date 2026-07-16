@@ -981,21 +981,26 @@ def extract_task_references(commit_message: str) -> list:
     return list(set(found))
 
 
-def update_task_status(task_ref: str, new_status: str) -> bool:
-    # Finds a task by its reference number (e.g. "8" -> "task_008") and updates its status.
+def update_task_status(task_id: str, new_status: str) -> bool:
+    # Finds a task by its exact ID or legacy reference number and updates its status.
     from database import SessionLocal
     from models_sql import TaskTable
     from sqlalchemy.orm.attributes import flag_modified
 
-    # Build the full task ID from the number
-    # "8" becomes "task_008"
-    full_task_id = f"task_{task_ref.zfill(3)}"
-
     db = SessionLocal()
     try:
-        task = db.query(TaskTable).filter(TaskTable.id == full_task_id).first()
+        task = db.query(TaskTable).filter(TaskTable.id == task_id).first()
         if not task:
-            print(f"[STATE MACHINE] ❌ Task {full_task_id} not found in database")
+            task_ref = task_id.replace("task_", "").lstrip("0")
+            if not task_ref:
+                task_ref = "0"
+            full_task_id = f"task_{task_ref.zfill(3)}"
+            task = db.query(TaskTable).filter(TaskTable.id == full_task_id).first()
+            if task:
+                task_id = full_task_id
+
+        if not task:
+            print(f"[STATE MACHINE] ❌ Task {task_id} not found in database")
             sys.stdout.flush()
             return False
 
@@ -1019,11 +1024,11 @@ def update_task_status(task_ref: str, new_status: str) -> bool:
 
         db.commit()
 
-        print(f"[STATE MACHINE] ✅ {full_task_id}: {old_status} → {new_status}")
+        print(f"[STATE MACHINE] ✅ {task_id}: {old_status} → {new_status}")
         sys.stdout.flush()
 
         # Sync to Neo4j Graph DB
-        sync_task_status_to_neo4j(full_task_id, new_status)
+        sync_task_status_to_neo4j(task_id, new_status)
 
         # Broadcasts task status change to all connected browsers for live UI updates.
         try:
@@ -1031,14 +1036,14 @@ def update_task_status(task_ref: str, new_status: str) -> bool:
                 manager.broadcast(
                     {
                         "type": "task_updated",
-                        "task_id": full_task_id,
+                        "task_id": task_id,
                         "old_status": old_status,
                         "new_status": new_status,
                         "timestamp": datetime.now(timezone.utc).isoformat(),
                     }
                 )
             )
-            print(f"[WEBSOCKET] 📡 Broadcast triggered for {full_task_id}")
+            print(f"[WEBSOCKET] 📡 Broadcast triggered for {task_id}")
             sys.stdout.flush()
         except Exception as e:
             print(f"[WEBSOCKET] ⚠️ Broadcast failed: {e}")
@@ -1046,7 +1051,7 @@ def update_task_status(task_ref: str, new_status: str) -> bool:
 
         return True
     except Exception as e:
-        print(f"[STATE MACHINE] Error updating task {full_task_id}: {e}")
+        print(f"[STATE MACHINE] Error updating task {task_id}: {e}")
         db.rollback()
         return False
     finally:
@@ -1586,19 +1591,18 @@ async def create_new_task(request: Request):
     return new_task
 
 
+from pydantic import BaseModel
+
+class TaskStatusUpdate(BaseModel):
+    status: str
+
 @app.patch("/tasks/{task_id}/status")
-async def manually_update_task_status(task_id: str, request: Request):
-    body = await request.json()
-    new_status = body.get("status")
+async def manually_update_task_status(task_id: str, request: TaskStatusUpdate):
+    new_status = request.status
     if not new_status:
         return {"error": "'status' field required"}
 
-    # Extract just the number for the update function (e.g. "task_001" -> "1")
-    task_ref = task_id.replace("task_", "").lstrip("0")
-    if not task_ref:
-        task_ref = "0"
-
-    success = update_task_status(task_ref, new_status)
+    success = update_task_status(task_id, new_status)
     if success:
         return {"status": "success", "message": f"Updated {task_id} to {new_status}"}
     return {"error": "Task not found"}
