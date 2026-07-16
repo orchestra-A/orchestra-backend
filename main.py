@@ -6,7 +6,7 @@ import os
 from fastapi import FastAPI, Request
 from fastapi.responses import RedirectResponse
 from fastapi.websockets import WebSocket, WebSocketDisconnect
-from typing import List, Optional
+from typing import List, Optional, Dict, Any
 import asyncio
 import re
 import requests
@@ -1372,13 +1372,21 @@ async def get_team():
         return JSONResponse(status_code=504, content={"error": "AI service timeout or unreachable"})
 
 
+from pydantic import BaseModel
+
+class BlueprintRequest(BaseModel):
+    name: str
+    description: str
+    tech_stack: List[str]
+    members: List[str] = []
+
 # =====================================================================
 # Route: POST /blueprint
 # =====================================================================
 # Proxies frontend roadmap requests to the AI service, keeping INTERNAL_API_KEY server-side.
 # =====================================================================
 @app.post("/blueprint")
-async def proxy_blueprint(request: Request):
+async def proxy_blueprint(request: BlueprintRequest):
     import httpx
     from fastapi.responses import JSONResponse
     
@@ -1390,10 +1398,7 @@ async def proxy_blueprint(request: Request):
         sys.stdout.flush()
         return JSONResponse(status_code=500, content={"error": "AI service not configured"})
         
-    try:
-        body = await request.json()
-    except Exception:
-        body = {}
+    body = request.model_dump()
         
     print("[BLUEPRINT] 🔄 Forwarding blueprint request to AI service")
     sys.stdout.flush()
@@ -1422,13 +1427,17 @@ async def proxy_blueprint(request: Request):
         return JSONResponse(status_code=504, content={"error": "AI service timeout or unreachable"})
 
 
+class CloverRequest(BaseModel):
+    question: str
+    conversation_history: List[Dict[str, Any]] = []
+
 # =====================================================================
 # Route: POST /clover
 # =====================================================================
 # Proxies frontend chat requests to the Clover AI assistant, keeping INTERNAL_API_KEY server-side.
 # =====================================================================
 @app.post("/clover")
-async def proxy_clover(request: Request):
+async def proxy_clover(request: CloverRequest):
     import httpx
     from fastapi.responses import JSONResponse
     
@@ -1440,10 +1449,7 @@ async def proxy_clover(request: Request):
         sys.stdout.flush()
         return JSONResponse(status_code=500, content={"error": "AI service not configured"})
         
-    try:
-        body = await request.json()
-    except Exception:
-        body = {}
+    body = request.model_dump()
         
     print("[CLOVER] 🔄 Forwarding clover request to AI service")
     sys.stdout.flush()
@@ -1743,11 +1749,37 @@ async def websocket_endpoint(websocket: WebSocket):
 # =====================================================================
 # Redirects user to GitHub's OAuth authorization page.
 # =====================================================================
+def get_frontend_url(request: Request, return_url: Optional[str] = None) -> str:
+    allowed_origins = [
+        "https://orchestra-frontend-roan.vercel.app",
+        "http://localhost:3000",
+        "http://localhost:5173",
+        FRONTEND_URL,
+    ]
+
+    from urllib.parse import urlparse
+    if return_url:
+        parsed = urlparse(return_url)
+        origin = f"{parsed.scheme}://{parsed.netloc}"
+        if origin in allowed_origins:
+            return return_url
+
+    referer = request.headers.get("referer")
+    if referer:
+        parsed = urlparse(referer)
+        origin = f"{parsed.scheme}://{parsed.netloc}"
+        if origin in allowed_origins:
+            return origin
+            
+    return FRONTEND_URL
+
 @app.get("/auth/github")
-async def github_login(repo: Optional[str] = None, user_id: Optional[str] = None):
+async def github_login(request: Request, repo: Optional[str] = None, user_id: Optional[str] = None, return_url: Optional[str] = None):
     from fastapi.responses import RedirectResponse
     import urllib.parse
     import json
+
+    actual_return = get_frontend_url(request, return_url)
 
     # We pass the repo name and user_id through GitHub's "state" parameter
     # GitHub preserves "state" through the OAuth flow and sends it back
@@ -1756,6 +1788,8 @@ async def github_login(repo: Optional[str] = None, user_id: Optional[str] = None
         state_dict["repo"] = repo
     if user_id:
         state_dict["user_id"] = user_id
+    if actual_return != FRONTEND_URL:
+        state_dict["return_url"] = actual_return
         
     state = urllib.parse.quote(json.dumps(state_dict)) if state_dict else ""
 
@@ -1777,6 +1811,21 @@ async def github_login(repo: Optional[str] = None, user_id: Optional[str] = None
 @app.get("/auth/github/callback")
 async def github_callback(code: Optional[str] = None, state: Optional[str] = None, error: Optional[str] = None, error_description: Optional[str] = None):
     frontend_url = FRONTEND_URL
+    import urllib.parse
+    import json
+    
+    repo = None
+    existing_user_id = None
+    if state:
+        try:
+            state_dict = json.loads(urllib.parse.unquote(state))
+            repo = state_dict.get("repo")
+            existing_user_id = state_dict.get("user_id")
+            if state_dict.get("return_url"):
+                frontend_url = state_dict.get("return_url")
+        except Exception:
+            # Fallback for old simple string state
+            repo = urllib.parse.unquote(state)
 
     if error or not code:
         err_msg = error_description or error or "missing_code"
@@ -1822,20 +1871,7 @@ async def github_callback(code: Optional[str] = None, state: Optional[str] = Non
         github_username = user_data.get("login")
 
     # Step 3 — Auto register webhook on their repo
-    # Decode the state parameter
-    import urllib.parse
-    import json
-
-    repo = None
-    existing_user_id = None
-    if state:
-        try:
-            state_dict = json.loads(urllib.parse.unquote(state))
-            repo = state_dict.get("repo")
-            existing_user_id = state_dict.get("user_id")
-        except Exception:
-            # Fallback for old simple string state
-            repo = urllib.parse.unquote(state)
+    # State parameter was decoded at the top of the function
 
     webhook_result = {"success": False, "note": "No repo provided"}
 
@@ -1901,11 +1937,20 @@ async def get_connected_users():
 # Redirects user to Discord's OAuth authorization page with identify/email/guilds scopes.
 # =====================================================================
 @app.get("/auth/discord")
-async def discord_login(user_id: Optional[str] = None):
+async def discord_login(request: Request, user_id: Optional[str] = None, return_url: Optional[str] = None):
     from fastapi.responses import RedirectResponse
     import urllib.parse
+    import json
 
-    state = urllib.parse.quote(user_id) if user_id else ""
+    actual_return = get_frontend_url(request, return_url)
+
+    state_dict = {}
+    if user_id:
+        state_dict["user_id"] = user_id
+    if actual_return != FRONTEND_URL:
+        state_dict["return_url"] = actual_return
+
+    state = urllib.parse.quote(json.dumps(state_dict)) if state_dict else ""
 
     discord_auth_url = (
         f"https://discord.com/oauth2/authorize"
@@ -1926,6 +1971,18 @@ async def discord_login(user_id: Optional[str] = None):
 @app.get("/auth/discord/callback")
 async def discord_callback(code: Optional[str] = None, state: Optional[str] = None, error: Optional[str] = None, error_description: Optional[str] = None):
     frontend_url = FRONTEND_URL
+    import urllib.parse
+    import json
+    
+    existing_user_id = None
+    if state:
+        try:
+            state_dict = json.loads(urllib.parse.unquote(state))
+            existing_user_id = state_dict.get("user_id")
+            if state_dict.get("return_url"):
+                frontend_url = state_dict.get("return_url")
+        except Exception:
+            existing_user_id = urllib.parse.unquote(state)
 
     if error or not code:
         err_msg = error_description or error or "missing_code"
@@ -1979,8 +2036,7 @@ async def discord_callback(code: Optional[str] = None, state: Optional[str] = No
             )
 
     # Step 3 — Save this user to our records
-    import urllib.parse
-    existing_user_id = urllib.parse.unquote(state) if state else None
+    # existing_user_id was decoded at the top of the function
 
     user_profile = save_unified_user_profile(
         discord_id=discord_id,
@@ -2040,12 +2096,21 @@ async def get_discord_users():
 # Redirects user to Google's OAuth authorization page with openid/email/profile scopes.
 # =====================================================================
 @app.get("/auth/google")
-async def google_login(user_id: Optional[str] = None):
+async def google_login(request: Request, user_id: Optional[str] = None, return_url: Optional[str] = None):
     from fastapi.responses import RedirectResponse
     import urllib.parse
+    import json
 
-    # Pass user_id through state so we can link to existing profile
-    state = urllib.parse.quote(user_id) if user_id else ""
+    actual_return = get_frontend_url(request, return_url)
+
+    state_dict = {}
+    if user_id:
+        state_dict["user_id"] = user_id
+    if actual_return != FRONTEND_URL:
+        state_dict["return_url"] = actual_return
+
+    # Pass state so we can link to existing profile and redirect correctly
+    state = urllib.parse.quote(json.dumps(state_dict)) if state_dict else ""
 
     google_auth_url = (
         f"https://accounts.google.com/o/oauth2/v2/auth"
@@ -2068,8 +2133,19 @@ async def google_callback(code: str, state: Optional[str] = None):
     from fastapi.responses import RedirectResponse
     import httpx
     import urllib.parse
+    import json
 
     frontend_url = FRONTEND_URL
+    existing_user_id = None
+    
+    if state:
+        try:
+            state_dict = json.loads(urllib.parse.unquote(state))
+            existing_user_id = state_dict.get("user_id")
+            if state_dict.get("return_url"):
+                frontend_url = state_dict.get("return_url")
+        except Exception:
+            existing_user_id = urllib.parse.unquote(state)
 
     async with httpx.AsyncClient() as client:
 
@@ -2124,12 +2200,7 @@ async def google_callback(code: str, state: Optional[str] = None):
     sys.stdout.flush()
 
     # Step 3 — Get existing user_id from state if linking accounts
-    existing_user_id = None
-    if state:
-        try:
-            existing_user_id = urllib.parse.unquote(state)
-        except Exception:
-            pass
+    # existing_user_id was decoded at the top of the function
 
     # Step 4 — Save to unified user profile (links to any existing GitHub/Discord profile)
     user_profile = save_unified_user_profile(
