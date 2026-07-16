@@ -40,9 +40,18 @@ pip install -r requirements.txt
 Create a `.env` file in the root directory and add the following keys:
 ```
 DATABASE_URL=postgresql://user:password@endpoint/dbname
-GITHUB_WEBHOOK_SECRET=your_secret_here
+BACKEND_URL=http://localhost:8000
+FRONTEND_URL=http://localhost:3000
+GITHUB_WEBHOOK_SECRET_KEY=your_secret_here
 GITHUB_CLIENT_ID=your_client_id
 GITHUB_CLIENT_SECRET=your_client_secret
+DISCORD_CLIENT_ID=your_discord_client_id
+DISCORD_CLIENT_SECRET=your_discord_client_secret
+DISCORD_BOT_TOKEN=your_discord_bot_token
+GOOGLE_CLIENT_ID=your_google_client_id
+GOOGLE_CLIENT_SECRET=your_google_client_secret
+GRAPH_API_URL=https://orchestra-ai-36zm.onrender.com
+INTERNAL_API_KEY=your_internal_api_key
 ```
 
 ### 3. Running the Server
@@ -72,3 +81,5 @@ uvicorn main:app --reload --port 8000
 - **Week 2:** Complete (Data Pipeline Normalizer).
 - **Week 3:** Complete (Task REST Endpoints, WebSocket Integration, Background Schedulers).
 - **Week 4:** Complete (Full PostgreSQL Migration for tasks, events, user profiles, and dynamic platform integrations).
+- **Week 5:** Complete (AI Server Proxy Integration for blueprints and graphs).
+- **Week 6:** Complete (Database Seeding, Task Status API with Pydantic schemas, AI proxy refinement, and system stability fixes).
