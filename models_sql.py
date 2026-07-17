@@ -1,4 +1,6 @@
-from sqlalchemy import Column, String, Integer, JSON, Boolean
+import uuid
+from sqlalchemy import Column, String, Integer, JSON, Boolean, ForeignKey, Text
+from sqlalchemy.orm import relationship
 from database import Base
 
 
@@ -59,5 +61,30 @@ class PlatformIntegrationTable(Base):
     connected_at = Column(String)
 
 
+class ProjectTable(Base):
+    __tablename__ = "projects"
 
+    # Unique project identifier
+    id = Column(String, primary_key=True, index=True, default=lambda: f"proj_{uuid.uuid4().hex[:8]}")
+
+    # Name of the project (max 255 characters)
+    name = Column(String(255), nullable=False, index=True)
+
+    # Optional detailed description of the project
+    description = Column(Text, nullable=True)
+
+    # ID of the user who created the project
+    created_by = Column(String, nullable=True, index=True)
+
+    # List of technologies used in the project
+    tech_stack = Column(JSON, nullable=True)
+
+    # List of user IDs who are members of the project
+    members = Column(JSON, nullable=True)
+
+    # ISO 8601 timestamp of when the project was created
+    created_at = Column(String, nullable=False)
+
+    # ISO 8601 timestamp of when the project was last updated
+    updated_at = Column(String, nullable=False)
 
