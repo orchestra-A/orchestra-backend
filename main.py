@@ -1683,18 +1683,21 @@ async def add_task_history_update(task_id: str, request: Request):
 # Projects routes
 # =====================================================================
 
+class CreateProjectRequest(BaseModel):
+    name: str
+    description: Optional[str] = None
+    tech_stack: List[str] = []
+    members: List[str] = []
+
 @app.post("/projects")
-async def create_project(request: Request, user_id: Optional[str] = None):
+async def create_project(payload: CreateProjectRequest, request: Request, user_id: Optional[str] = None):
     from fastapi.responses import Response
     from database import SessionLocal
     from models_sql import ProjectTable
     import uuid
 
     print(f"[PROJECT] Received request to create a project, user_id={user_id}")
-    try:
-        body = await request.json()
-    except Exception:
-        body = {}
+    body = payload.model_dump()
 
     name = body.get("name")
     if not name:
