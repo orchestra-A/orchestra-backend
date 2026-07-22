@@ -1390,6 +1390,19 @@ class BlueprintRequest(BaseModel):
     description: str
     tech_stack: List[str]
     members: List[str] = []
+    
+    model_config = {
+        "json_schema_extra": {
+            "examples": [
+                {
+                    "name": "Orchestra Dashboard",
+                    "description": "A frontend dashboard for managing projects.",
+                    "tech_stack": ["React", "TypeScript", "Tailwind CSS"],
+                    "members": ["usr_123456"]
+                }
+            ]
+        }
+    }
 
 # =====================================================================
 # Route: POST /blueprint
@@ -1441,6 +1454,20 @@ async def proxy_blueprint(payload: BlueprintRequest, request: Request):
 class CloverRequest(BaseModel):
     question: str
     conversation_history: List[Dict[str, Any]] = []
+
+    model_config = {
+        "json_schema_extra": {
+            "examples": [
+                {
+                    "question": "How do I add a new endpoint?",
+                    "conversation_history": [
+                        {"role": "user", "content": "Hi"},
+                        {"role": "assistant", "content": "Hello!"}
+                    ]
+                }
+            ]
+        }
+    }
 
 # =====================================================================
 # Route: POST /clover
@@ -1683,21 +1710,18 @@ async def add_task_history_update(task_id: str, request: Request):
 # Projects routes
 # =====================================================================
 
-class CreateProjectRequest(BaseModel):
-    name: str
-    description: Optional[str] = None
-    tech_stack: List[str] = []
-    members: List[str] = []
-
 @app.post("/projects")
-async def create_project(payload: CreateProjectRequest, request: Request, user_id: Optional[str] = None):
+async def create_project(request: Request, user_id: Optional[str] = None):
     from fastapi.responses import Response
     from database import SessionLocal
     from models_sql import ProjectTable
     import uuid
 
     print(f"[PROJECT] Received request to create a project, user_id={user_id}")
-    body = payload.model_dump()
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
 
     name = body.get("name")
     if not name:
