@@ -195,7 +195,7 @@ def save_tasks(tasks: dict[str, Task]) -> None:
             # itself is synchronous.
             if old_state != new_state:
                 try:
-                    from main import sync_task_status_to_neo4j
+                    from app.services.graph_service import sync_task_status_to_neo4j
                     import threading
                     threading.Thread(
                         target=sync_task_status_to_neo4j,
@@ -298,7 +298,7 @@ async def handle_push_event(event: dict) -> Optional[dict]:
         task_dict = task.to_dict()
 
         # Broadcast the update dynamically to avoid circular import
-        from main import manager
+        from app.utils.websocket_manager import manager
 
         await manager.broadcast({"type": "task_update", **task_dict})
 
@@ -358,7 +358,7 @@ async def handle_pr_event(event: dict) -> Optional[dict]:
             task_dict = task.to_dict()
 
             # Broadcast the update dynamically to avoid circular import
-            from main import manager
+            from app.utils.websocket_manager import manager
 
             await manager.broadcast({"type": "task_update", **task_dict})
 
