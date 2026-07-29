@@ -28,7 +28,7 @@ async def create_project(request: Request, user_id: Optional[str] = None):
 
     created_at = datetime.now(timezone.utc).isoformat()
     updated_at = created_at
-    project_id = f"proj_{uuid.uuid4().hex[:8]}"
+    project_id = body.get("id") or f"proj_{uuid.uuid4().hex[:8]}"
 
     db = SessionLocal()
     try:
