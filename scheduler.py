@@ -27,7 +27,7 @@ async def daily_summary_job():
     Groups by developer.
     Broadcasts a summary digest to all connected clients.
     """
-    from main import manager
+    from app.utils.websocket_manager import manager
 
     try:
         with open("events.json") as f:
@@ -99,7 +99,7 @@ async def daily_summary_job():
 
 
 async def heartbeat_job():
-    from main import manager
+    from app.utils.websocket_manager import manager
     from datetime import datetime, timezone
 
     await manager.broadcast(
@@ -118,7 +118,7 @@ async def stale_task_check_job():
     Broadcasts a warning to all connected clients.
     """
     from state_machine import load_tasks, TaskState
-    from main import manager
+    from app.utils.websocket_manager import manager
 
     tasks = load_tasks()
     cutoff = (datetime.now(timezone.utc) - timedelta(hours=24)).isoformat()
