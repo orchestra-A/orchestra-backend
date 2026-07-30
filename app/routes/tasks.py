@@ -41,6 +41,7 @@ async def get_tasks(project_id: Optional[str] = None):
                     "created_at": t.created_at,
                     "pr_number": t.pr_number,
                     "branch": t.branch,
+                    "deadline": t.deadline,
                     "history": t.history,
                 }
             )
@@ -73,6 +74,7 @@ async def get_single_task(task_id: str):
                 "created_at": t.created_at,
                 "pr_number": t.pr_number,
                 "branch": t.branch,
+                "deadline": t.deadline,
                 "history": t.history,
             }
         return {"error": "Task not found"}
@@ -95,6 +97,7 @@ async def create_new_task(request: Request):
     platform = body.get("platform")
     assigned_to = body.get("assigned_to")
     project_id = body.get("project_id")
+    deadline = body.get("deadline")
     depends_on = body.get("depends_on") or body.get("dependencies", [])
     
     created_at = datetime.now(timezone.utc).isoformat()
@@ -112,6 +115,7 @@ async def create_new_task(request: Request):
         "platform": platform,
         "assigned_to": assigned_to,
         "project_id": project_id,
+        "deadline": deadline,
         "depends_on": depends_on,
         "created_at": created_at,
     }
@@ -132,6 +136,7 @@ async def create_new_task(request: Request):
                 platform=platform,
                 assigned_to=assigned_to,
                 project_id=project_id,
+                deadline=deadline,
                 created_at=created_at,
                 depends_on=depends_on,
                 history=[]
