@@ -25,6 +25,7 @@ async def create_project(request: Request, user_id: Optional[str] = None):
     description = body.get("description")
     tech_stack = body.get("tech_stack", [])
     members = body.get("members", [])
+    blueprint_summary = body.get("blueprint_summary")
 
     created_at = datetime.now(timezone.utc).isoformat()
     updated_at = created_at
@@ -41,13 +42,15 @@ async def create_project(request: Request, user_id: Optional[str] = None):
             members=members,
             created_at=created_at,
             updated_at=updated_at,
+            blueprint_summary=blueprint_summary,
         )
         db.add(new_project)
         db.commit()
-        print(f"[PROJECT] Successfully created project {project_id}")
+        db.refresh(new_project)
+        print(f"[PROJECT] Successfully created project {new_project.id}")
         
         project_dict = {
-            "id": project_id,
+            "id": new_project.id,
             "name": name,
             "description": description,
             "created_by": user_id,
@@ -55,6 +58,7 @@ async def create_project(request: Request, user_id: Optional[str] = None):
             "members": members,
             "created_at": created_at,
             "updated_at": updated_at,
+            "blueprint_summary": blueprint_summary,
         }
         return Response(content=json.dumps(project_dict, indent=4), media_type="application/json")
     except Exception as e:
@@ -86,6 +90,7 @@ async def get_projects(user_id: Optional[str] = None):
                 "members": p.members,
                 "created_at": p.created_at,
                 "updated_at": p.updated_at,
+                "blueprint_summary": p.blueprint_summary,
             })
         
         result = {
@@ -119,6 +124,7 @@ async def get_project_by_id(project_id: str):
             "members": p.members,
             "created_at": p.created_at,
             "updated_at": p.updated_at,
+            "blueprint_summary": p.blueprint_summary,
         }
         return Response(content=json.dumps(project_dict, indent=4), media_type="application/json")
     except Exception as e:
@@ -151,6 +157,8 @@ async def update_project(project_id: str, request: Request):
             p.tech_stack = body["tech_stack"]
         if "members" in body:
             p.members = body["members"]
+        if "blueprint_summary" in body:
+            p.blueprint_summary = body["blueprint_summary"]
             
         p.updated_at = datetime.now(timezone.utc).isoformat()
         db.commit()
@@ -165,6 +173,7 @@ async def update_project(project_id: str, request: Request):
             "members": p.members,
             "created_at": p.created_at,
             "updated_at": p.updated_at,
+            "blueprint_summary": p.blueprint_summary,
         }
         return Response(content=json.dumps(project_dict, indent=4), media_type="application/json")
     except Exception as e:

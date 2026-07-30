@@ -21,8 +21,11 @@ def run_migrations():
         
         print("Running manual migrations with psycopg2...")
 
-        # 1. Alter tasks and users
+        # 1. Alter tasks, users, and projects
         try:
+            cur.execute("ALTER TABLE projects ADD COLUMN IF NOT EXISTS blueprint_summary TEXT;")
+            print("Added blueprint_summary to projects")
+
             cur.execute("ALTER TABLE tasks ADD COLUMN IF NOT EXISTS platform_integration_id VARCHAR;")
             cur.execute("ALTER TABLE tasks ADD COLUMN IF NOT EXISTS track VARCHAR;")
             cur.execute("ALTER TABLE tasks ADD COLUMN IF NOT EXISTS description VARCHAR;")

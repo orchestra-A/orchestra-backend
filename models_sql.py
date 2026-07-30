@@ -88,3 +88,6 @@ class ProjectTable(Base):
     # ISO 8601 timestamp of when the project was last updated
     updated_at = Column(String, nullable=False)
 
+    # Optional summary from the project blueprint
+    blueprint_summary = Column(Text, nullable=True)
+
