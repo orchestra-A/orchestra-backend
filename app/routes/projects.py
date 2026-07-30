@@ -26,10 +26,13 @@ async def create_project(request: Request, user_id: Optional[str] = None):
     tech_stack = body.get("tech_stack", [])
     members = body.get("members", [])
     blueprint_summary = body.get("blueprint_summary")
+    created_by_body = body.get("created_by")
 
     created_at = datetime.now(timezone.utc).isoformat()
     updated_at = created_at
     project_id = body.get("id") or f"proj_{uuid.uuid4().hex[:8]}"
+    
+    final_created_by = created_by_body or user_id
 
     db = SessionLocal()
     try:
@@ -37,7 +40,7 @@ async def create_project(request: Request, user_id: Optional[str] = None):
             id=project_id,
             name=name,
             description=description,
-            created_by=user_id,
+            created_by=final_created_by,
             tech_stack=tech_stack,
             members=members,
             created_at=created_at,
@@ -53,7 +56,7 @@ async def create_project(request: Request, user_id: Optional[str] = None):
             "id": new_project.id,
             "name": name,
             "description": description,
-            "created_by": user_id,
+            "created_by": final_created_by,
             "tech_stack": tech_stack,
             "members": members,
             "created_at": created_at,
