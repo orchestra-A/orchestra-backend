@@ -40,6 +40,10 @@ def run_migrations():
             
             cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS skills JSON DEFAULT '[]'::json;")
             print("Added skills to users")
+            
+            cur.execute("ALTER TABLE events ADD COLUMN IF NOT EXISTS project_id VARCHAR;")
+            cur.execute("CREATE INDEX IF NOT EXISTS ix_events_project_id ON events (project_id);")
+            print("Added project_id to events")
         except Exception as e:
             print(f"Error altering tables (adding columns): {e}")
 

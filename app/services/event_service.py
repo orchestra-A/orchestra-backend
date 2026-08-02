@@ -33,6 +33,7 @@ def save_normalized_event(event: NormalizedEvent) -> None:
             channel=event.channel,
             action_summary=event.action_summary,
             raw_metadata=event.raw_metadata,
+            project_id=event.project_id,
         )
         db.add(new_event)
         db.commit()

@@ -19,3 +19,4 @@ class NormalizedEvent(BaseModel):
     channel: Optional[str] = None  # for Discord events: channel_id
     action_summary: str  # human-readable one-liner for the UI
     raw_metadata: dict  # original fields preserved for M1/M2 to use
+    project_id: Optional[str] = None
