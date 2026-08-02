@@ -96,7 +96,7 @@ The routing layer handles HTTP request/response lifecycle:
 | `discord.py` | `/webhook/discord` | Discord webhook endpoints |
 | `tasks.py` | `/tasks/*` | Task CRUD operations with state management |
 | `events.py` | `/events` | Event retrieval and filtering |
-| `projects.py` | `/projects/*` | Project management endpoints |
+| `projects.py` | `/projects/*` | Project management, tracking configurations, and cascading deletions |
 | `graph.py` | `/graph/*` | Graph database query endpoints |
 | `websocket.py` | `/ws` | Real-time WebSocket connections |
 
@@ -109,7 +109,7 @@ Business logic layer that orchestrates operations:
 - **`event_service.py`**: Event persistence and retrieval from PostgreSQL.
 - **`oauth_service.py`**: OAuth token exchange and refresh logic for all platforms.
 - **`graph_service.py`**: Neo4j graph database synchronization for task relationships.
-- **`ai_service.py`**: Proxy layer for AI service interactions (blueprints, graphs).
+- **`ai_service.py`**: Proxy layer for AI service interactions (blueprints, graphs) featuring real-time streaming and Neo4j deletion cleanup.
 - **`standup_service.py`**: Generates standup reports from event data.
 
 ### Schemas (`app/schemas/`)
@@ -128,7 +128,7 @@ Shared helper functions:
 | Module | Purpose |
 |--------|---------|
 | `models.py` | `NormalizedEvent` Pydantic model - the universal event schema |
-| `models_sql.py` | SQLAlchemy ORM models: `EventTable`, `TaskTable`, `UserTable`, `PlatformIntegrationTable`, `ProjectTable` |
+| `models_sql.py` | SQLAlchemy ORM models: `EventTable`, `TaskTable`, `UserTable`, `PlatformIntegrationTable`, `ProjectTable` (with dynamic tracking) |
 | `database.py` | Database engine creation, session management, connection pooling with retry logic |
 | `state_machine.py` | Task state transitions (`PENDING → IN_PROGRESS → COMPLETED → BLOCKED`) with history tracking |
 | `scheduler.py` | APScheduler-based background jobs: daily summaries, heartbeats, stale task detection |
@@ -212,6 +212,9 @@ Task Request (REST API or WebSocket)
 - `name` (String): Project name
 - `members` (JSON): Team member user IDs
 - `tech_stack` (JSON): Technology list
+- `tracked_repos` (JSON): Dynamically tracked GitHub repositories
+- `tracked_channels` (JSON): Dynamically tracked Discord webhook URLs
+- `is_archived` (Boolean): Archive status flag
 
 **platform_integrations**
 - `id` (String, PK): Integration identifier
@@ -328,3 +331,4 @@ The scheduler runs three recurring tasks:
 - **Week 4:** Complete (Full PostgreSQL Migration for tasks, events, user profiles, and dynamic platform integrations).
 - **Week 5:** Complete (AI Server Proxy Integration for blueprints and graphs).
 - **Week 6:** Complete (Database Seeding, Task Status API with Pydantic schemas, AI proxy refinement, and system stability fixes).
+- **Week 7:** Complete (Dynamic project tracking configuration, AI streaming capabilities, cascading deletions, and automated GitHub webhooks).
