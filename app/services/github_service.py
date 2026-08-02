@@ -4,6 +4,8 @@ import sys
 import httpx
 from app.core.config import GITHUB_WEBHOOK_SECRET_KEY, BACKEND_URL
 from app.services.oauth_service import save_unified_user_profile
+from database import SessionLocal
+from models_sql import PlatformIntegrationTable
 
 def generate_user_webhook_secret(github_username: str) -> str:
     # Generates a unique webhook secret per user using HMAC-SHA256.
@@ -93,3 +95,30 @@ def save_connected_user(
         github_access_token=access_token,
         github_repo=repo_full_name
     )
+
+
+async def sync_project_webhooks(project_id: str, tracked_repos: list, user_id: str):
+    db = SessionLocal()
+    try:
+        integration = db.query(PlatformIntegrationTable).filter(
+            PlatformIntegrationTable.user_id == user_id,
+            PlatformIntegrationTable.platform_name == "github"
+        ).first()
+        
+        if not integration:
+            print(f"[GITHUB] User {user_id} has no GitHub integration. Skipping webhooks.")
+            return
+            
+        access_token = integration.access_token
+        metadata = integration.platform_metadata or {}
+        github_username = metadata.get("github_username", user_id)
+        
+        for repo in tracked_repos:
+            print(f"[GITHUB] Syncing webhook for {repo} in project {project_id}")
+            sys.stdout.flush()
+            await register_github_webhook(access_token, github_username, repo)
+    except Exception as e:
+        print(f"[GITHUB] Error syncing webhooks for project {project_id}: {e}")
+        sys.stdout.flush()
+    finally:
+        db.close()

@@ -1,11 +1,11 @@
 import sys
 import os
 from fastapi import APIRouter, Request
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 import httpx
 
 from app.schemas.ai import BlueprintRequest, CloverRequest
-from app.services.ai_service import get_team_data, post_blueprint_data, post_clover_data
+from app.services.ai_service import get_team_data, post_blueprint_data, post_clover_data_stream
 
 router = APIRouter()
 
@@ -76,21 +76,10 @@ async def proxy_clover(payload: CloverRequest, request: Request):
         return JSONResponse(status_code=500, content={"error": "AI service not configured"})
         
     body = payload.model_dump()
-    print("[CLOVER] 🔄 Forwarding clover request to AI service")
+    print("[CLOVER] 🔄 Forwarding clover request to AI service as a stream")
     sys.stdout.flush()
     
-    try:
-        response = await post_clover_data(body)
-        if response.status_code != 200:
-            print(f"[CLOVER] ❌ AI service returned non-200: {response.status_code}")
-            sys.stdout.flush()
-            return JSONResponse(status_code=response.status_code, content={"error": "AI service error", "detail": response.text})
-            
-        print("[CLOVER] ✅ Clover response received, returning to frontend")
-        sys.stdout.flush()
-        return JSONResponse(status_code=200, content=response.json())
-        
-    except httpx.RequestError as e:
-        print(f"[CLOVER] ❌ Network error or timeout: {str(e)}")
-        sys.stdout.flush()
-        return JSONResponse(status_code=504, content={"error": "AI service timeout or unreachable"})
+    return StreamingResponse(
+        post_clover_data_stream(body),
+        media_type="text/event-stream"
+    )

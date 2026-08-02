@@ -93,3 +93,8 @@ class ProjectTable(Base):
     # Optional summary from the project blueprint
     blueprint_summary = Column(Text, nullable=True)
 
+    # Tracking arrays and archive flag
+    tracked_repos = Column(JSON, default=list)
+    tracked_channels = Column(JSON, default=list)
+    is_archived = Column(Boolean, default=False)
+
