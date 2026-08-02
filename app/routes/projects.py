@@ -4,7 +4,9 @@ from datetime import datetime, timezone
 from typing import Optional
 from fastapi import APIRouter, Request, Response
 from database import SessionLocal
-from models_sql import ProjectTable
+from models_sql import ProjectTable, TaskTable
+from app.services.ai_service import delete_ai_project
+from app.services.github_service import sync_project_webhooks
 
 router = APIRouter()
 
@@ -27,6 +29,9 @@ async def create_project(request: Request, user_id: Optional[str] = None):
     members = body.get("members", [])
     blueprint_summary = body.get("blueprint_summary")
     created_by_body = body.get("created_by")
+    tracked_repos = body.get("tracked_repos", [])
+    tracked_channels = body.get("tracked_channels", [])
+    is_archived = body.get("is_archived", False)
 
     created_at = datetime.now(timezone.utc).isoformat()
     updated_at = created_at
@@ -46,6 +51,9 @@ async def create_project(request: Request, user_id: Optional[str] = None):
             created_at=created_at,
             updated_at=updated_at,
             blueprint_summary=blueprint_summary,
+            tracked_repos=tracked_repos,
+            tracked_channels=tracked_channels,
+            is_archived=is_archived,
         )
         db.add(new_project)
         db.commit()
@@ -62,6 +70,9 @@ async def create_project(request: Request, user_id: Optional[str] = None):
             "created_at": created_at,
             "updated_at": updated_at,
             "blueprint_summary": blueprint_summary,
+            "tracked_repos": tracked_repos,
+            "tracked_channels": tracked_channels,
+            "is_archived": is_archived,
         }
         return Response(content=json.dumps(project_dict, indent=4), media_type="application/json")
     except Exception as e:
@@ -94,6 +105,9 @@ async def get_projects(user_id: Optional[str] = None):
                 "created_at": p.created_at,
                 "updated_at": p.updated_at,
                 "blueprint_summary": p.blueprint_summary,
+                "tracked_repos": p.tracked_repos,
+                "tracked_channels": p.tracked_channels,
+                "is_archived": p.is_archived,
             })
         
         result = {
@@ -128,6 +142,9 @@ async def get_project_by_id(project_id: str):
             "created_at": p.created_at,
             "updated_at": p.updated_at,
             "blueprint_summary": p.blueprint_summary,
+            "tracked_repos": p.tracked_repos,
+            "tracked_channels": p.tracked_channels,
+            "is_archived": p.is_archived,
         }
         return Response(content=json.dumps(project_dict, indent=4), media_type="application/json")
     except Exception as e:
@@ -152,6 +169,10 @@ async def update_project(project_id: str, request: Request):
             print(f"[PROJECT] Project {project_id} not found for update")
             return Response(content='{"error": "Project not found"}', media_type="application/json", status_code=404)
         
+        if p.is_archived and body.get("is_archived") is not False:
+            print(f"[PROJECT] Project {project_id} is archived, updates are blocked")
+            return Response(content='{"error": "Project is archived and cannot be edited"}', media_type="application/json", status_code=400)
+            
         if "name" in body:
             p.name = body["name"]
         if "description" in body:
@@ -162,6 +183,15 @@ async def update_project(project_id: str, request: Request):
             p.members = body["members"]
         if "blueprint_summary" in body:
             p.blueprint_summary = body["blueprint_summary"]
+        if "tracked_repos" in body:
+            p.tracked_repos = body["tracked_repos"]
+            import asyncio
+            asyncio.create_task(sync_project_webhooks(project_id, body["tracked_repos"], p.created_by))
+            
+        if "tracked_channels" in body:
+            p.tracked_channels = body["tracked_channels"]
+        if "is_archived" in body:
+            p.is_archived = body["is_archived"]
             
         p.updated_at = datetime.now(timezone.utc).isoformat()
         db.commit()
@@ -177,10 +207,45 @@ async def update_project(project_id: str, request: Request):
             "created_at": p.created_at,
             "updated_at": p.updated_at,
             "blueprint_summary": p.blueprint_summary,
+            "tracked_repos": p.tracked_repos,
+            "tracked_channels": p.tracked_channels,
+            "is_archived": p.is_archived,
         }
         return Response(content=json.dumps(project_dict, indent=4), media_type="application/json")
     except Exception as e:
         print(f"[PROJECT] Error updating project {project_id}: {e}")
+        db.rollback()
+        return Response(content=json.dumps({"error": str(e)}), media_type="application/json", status_code=500)
+    finally:
+        db.close()
+
+
+@router.delete("/projects/{project_id}")
+async def delete_project(project_id: str):
+    print(f"[PROJECT] Received request to delete project {project_id}")
+    db = SessionLocal()
+    try:
+        p = db.query(ProjectTable).filter(ProjectTable.id == project_id).first()
+        if not p:
+            print(f"[PROJECT] Project {project_id} not found for deletion")
+            return Response(content='{"error": "Project not found"}', media_type="application/json", status_code=404)
+            
+        # Cascading delete of tasks
+        db.query(TaskTable).filter(TaskTable.project_id == project_id).delete()
+        print(f"[PROJECT] Deleted associated tasks for project {project_id}")
+        
+        # Delete project
+        db.delete(p)
+        db.commit()
+        print(f"[PROJECT] Successfully deleted project {project_id}")
+        
+        # Clean up AI server asynchronously
+        import asyncio
+        asyncio.create_task(delete_ai_project(project_id))
+        
+        return Response(content='{"success": true}', media_type="application/json")
+    except Exception as e:
+        print(f"[PROJECT] Error deleting project {project_id}: {e}")
         db.rollback()
         return Response(content=json.dumps({"error": str(e)}), media_type="application/json", status_code=500)
     finally:
