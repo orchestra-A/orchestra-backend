@@ -15,6 +15,7 @@ class EventTable(Base):
     channel = Column(String, nullable=True)
     action_summary = Column(String)
     raw_metadata = Column(JSON)
+    project_id = Column(String, nullable=True, index=True)
 
 
 class TaskTable(Base):
