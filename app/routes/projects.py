@@ -32,6 +32,7 @@ async def create_project(request: Request, user_id: Optional[str] = None):
     tracked_repos = body.get("tracked_repos", [])
     tracked_channels = body.get("tracked_channels", [])
     is_archived = body.get("is_archived", False)
+    github_repo_url = body.get("github_repo_url")
 
     created_at = datetime.now(timezone.utc).isoformat()
     updated_at = created_at
@@ -54,6 +55,7 @@ async def create_project(request: Request, user_id: Optional[str] = None):
             tracked_repos=tracked_repos,
             tracked_channels=tracked_channels,
             is_archived=is_archived,
+            github_repo_url=github_repo_url,
         )
         db.add(new_project)
         db.commit()
@@ -73,6 +75,7 @@ async def create_project(request: Request, user_id: Optional[str] = None):
             "tracked_repos": tracked_repos,
             "tracked_channels": tracked_channels,
             "is_archived": is_archived,
+            "github_repo_url": github_repo_url,
         }
         return Response(content=json.dumps(project_dict, indent=4), media_type="application/json")
     except Exception as e:
@@ -108,6 +111,7 @@ async def get_projects(user_id: Optional[str] = None):
                 "tracked_repos": p.tracked_repos,
                 "tracked_channels": p.tracked_channels,
                 "is_archived": p.is_archived,
+                "github_repo_url": p.github_repo_url,
             })
         
         result = {
@@ -145,6 +149,7 @@ async def get_project_by_id(project_id: str):
             "tracked_repos": p.tracked_repos,
             "tracked_channels": p.tracked_channels,
             "is_archived": p.is_archived,
+            "github_repo_url": p.github_repo_url,
         }
         return Response(content=json.dumps(project_dict, indent=4), media_type="application/json")
     except Exception as e:
@@ -192,6 +197,8 @@ async def update_project(project_id: str, request: Request):
             p.tracked_channels = body["tracked_channels"]
         if "is_archived" in body:
             p.is_archived = body["is_archived"]
+        if "github_repo_url" in body:
+            p.github_repo_url = body["github_repo_url"]
             
         p.updated_at = datetime.now(timezone.utc).isoformat()
         db.commit()
@@ -210,6 +217,7 @@ async def update_project(project_id: str, request: Request):
             "tracked_repos": p.tracked_repos,
             "tracked_channels": p.tracked_channels,
             "is_archived": p.is_archived,
+            "github_repo_url": p.github_repo_url,
         }
         return Response(content=json.dumps(project_dict, indent=4), media_type="application/json")
     except Exception as e:

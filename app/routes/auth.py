@@ -228,6 +228,47 @@ async def get_users():
         db.close()
 
 
+@router.get("/users/{user_id}")
+async def get_user_by_id(user_id: str):
+    from database import SessionLocal
+    from models_sql import UserTable, PlatformIntegrationTable
+
+    db = SessionLocal()
+    try:
+        u = db.query(UserTable).filter_by(id=user_id).first()
+        if not u:
+            return Response(content='{"error": "User not found"}', media_type="application/json", status_code=404)
+        
+        # Get integrations for this user
+        integrations = db.query(PlatformIntegrationTable).filter_by(user_id=u.id).all()
+        platforms_connected = [pi.platform_name for pi in integrations]
+        
+        # Find specific usernames
+        gh = next((pi for pi in integrations if pi.platform_name == "github"), None)
+        dc = next((pi for pi in integrations if pi.platform_name == "discord"), None)
+        
+        profile = {
+            "user_id": u.id,
+            "username": u.username,
+            "email": u.email,
+            "github_username": gh.platform_metadata.get("username") if gh and gh.platform_metadata else None,
+            "discord_username": dc.platform_metadata.get("username") if dc and dc.platform_metadata else None,
+            "discord_id": dc.platform_metadata.get("discord_id") if dc and dc.platform_metadata else None,
+            "platforms_connected": platforms_connected,
+            "created_at": u.created_at,
+            "updated_at": u.updated_at,
+            "skills": u.skills if u.skills is not None else [],
+        }
+        
+        return Response(content=json.dumps(profile, indent=4), media_type="application/json")
+    except Exception as e:
+        print(f"[AUTH] Error fetching user {user_id}: {e}")
+        return Response(content=json.dumps({"error": str(e)}), media_type="application/json", status_code=500)
+    finally:
+        db.close()
+
+
+
 @router.put("/users/{user_id}")
 async def update_user_put(user_id: str, payload: dict):
     from database import SessionLocal

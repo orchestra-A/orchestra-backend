@@ -27,7 +27,8 @@ def run_migrations():
             cur.execute("ALTER TABLE projects ADD COLUMN IF NOT EXISTS tracked_repos JSON DEFAULT '[]'::json;")
             cur.execute("ALTER TABLE projects ADD COLUMN IF NOT EXISTS tracked_channels JSON DEFAULT '[]'::json;")
             cur.execute("ALTER TABLE projects ADD COLUMN IF NOT EXISTS is_archived BOOLEAN DEFAULT FALSE;")
-            print("Added blueprint_summary and tracking columns to projects")
+            cur.execute("ALTER TABLE projects ADD COLUMN IF NOT EXISTS github_repo_url VARCHAR;")
+            print("Added blueprint_summary, tracking columns, and github_repo_url to projects")
 
             cur.execute("ALTER TABLE tasks ADD COLUMN IF NOT EXISTS platform_integration_id VARCHAR;")
             cur.execute("ALTER TABLE tasks ADD COLUMN IF NOT EXISTS track VARCHAR;")
