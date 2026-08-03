@@ -24,7 +24,10 @@ def run_migrations():
         # 1. Alter tasks, users, and projects
         try:
             cur.execute("ALTER TABLE projects ADD COLUMN IF NOT EXISTS blueprint_summary TEXT;")
-            print("Added blueprint_summary to projects")
+            cur.execute("ALTER TABLE projects ADD COLUMN IF NOT EXISTS tracked_repos JSON DEFAULT '[]'::json;")
+            cur.execute("ALTER TABLE projects ADD COLUMN IF NOT EXISTS tracked_channels JSON DEFAULT '[]'::json;")
+            cur.execute("ALTER TABLE projects ADD COLUMN IF NOT EXISTS is_archived BOOLEAN DEFAULT FALSE;")
+            print("Added blueprint_summary and tracking columns to projects")
 
             cur.execute("ALTER TABLE tasks ADD COLUMN IF NOT EXISTS platform_integration_id VARCHAR;")
             cur.execute("ALTER TABLE tasks ADD COLUMN IF NOT EXISTS track VARCHAR;")
