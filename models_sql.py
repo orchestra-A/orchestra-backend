@@ -97,4 +97,7 @@ class ProjectTable(Base):
     tracked_repos = Column(JSON, default=list)
     tracked_channels = Column(JSON, default=list)
     is_archived = Column(Boolean, default=False)
+    
+    # Store the primary GitHub repository URL
+    github_repo_url = Column(String(255), nullable=True)
 
