@@ -24,6 +24,7 @@ class BlueprintRequest(BaseModel):
 
 class CloverRequest(BaseModel):
     question: str
+    user_id: str
     conversation_history: List[Dict[str, Any]] = []
     project_id: Optional[str] = None
 
@@ -32,6 +33,7 @@ class CloverRequest(BaseModel):
             "examples": [
                 {
                     "question": "How do I add a new endpoint?",
+                    "user_id": "usr_123456",
                     "conversation_history": [
                         {"role": "user", "content": "Hi"},
                         {"role": "assistant", "content": "Hello!"}
