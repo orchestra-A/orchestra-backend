@@ -121,9 +121,9 @@ async def receive_github(request: Request):
         # Get the old and new status from the history trail
         last_transition = state_change["history"][-1] if state_change["history"] else {}
         old_status = (
-            last_transition.get("from", "PENDING").lower()
-            if last_transition.get("from") != "PENDING"
-            else "pending"
+            last_transition.get("from", "UPCOMING").lower()
+            if last_transition.get("from") != "UPCOMING"
+            else "upcoming"
         )
         new_status = state_change["status"]
 

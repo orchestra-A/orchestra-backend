@@ -22,7 +22,7 @@ class TaskTable(Base):
     __tablename__ = "tasks"
     id = Column(String, primary_key=True, index=True)
     title = Column(String)
-    status = Column(String, default="PENDING")
+    status = Column(String, default="UPCOMING")
     track = Column(String, nullable=True)
     description = Column(String, nullable=True)
     priority = Column(String, nullable=True)

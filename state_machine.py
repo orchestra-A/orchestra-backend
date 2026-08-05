@@ -20,7 +20,7 @@ TASKS_FILE = "tasks.json"
 
 
 class TaskState(str, Enum):
-    PENDING = "PENDING"
+    UPCOMING = "UPCOMING"
     IN_PROGRESS = "IN_PROGRESS"
     COMPLETED = "COMPLETED"
     BLOCKED = "BLOCKED"
@@ -30,7 +30,7 @@ class TaskState(str, Enum):
 class Task:
     id: str
     title: str
-    state: TaskState = TaskState.PENDING
+    state: TaskState = TaskState.UPCOMING
     assigned_to: Optional[str] = None
     created_at: str = field(
         default_factory=lambda: datetime.now(timezone.utc).isoformat()
@@ -77,8 +77,8 @@ class Task:
             "id": self.id,
             "title": self.title,
             "status": self.state.value.lower()
-            if self.state != TaskState.PENDING
-            else "pending",
+            if self.state != TaskState.UPCOMING
+            else "upcoming",
             "assigned_to": self.assigned_to,
             "project_id": self.project_id,
             "order": self.order,
@@ -93,9 +93,11 @@ class Task:
     @classmethod
     def from_dict(cls, d: dict) -> "Task":
         # Map Member 3's 'status' field back to TaskState Enum
-        raw_status = d.get("status", "pending")
-        if raw_status == "pending":
-            state = TaskState.PENDING
+        raw_status = d.get("status", "upcoming").lower()
+        if raw_status in ("pending", "upcoming"):
+            state = TaskState.UPCOMING
+        elif raw_status == "stopped":
+            state = TaskState.BLOCKED
         else:
             state = TaskState(raw_status.upper())
 
@@ -121,9 +123,9 @@ class Task:
 # ─────────────────────────────────────────────
 
 TRANSITIONS: dict[TaskState, list[TaskState]] = {
-    TaskState.PENDING: [TaskState.IN_PROGRESS, TaskState.BLOCKED],
-    TaskState.IN_PROGRESS: [TaskState.COMPLETED, TaskState.BLOCKED, TaskState.PENDING],
-    TaskState.BLOCKED: [TaskState.PENDING, TaskState.IN_PROGRESS],
+    TaskState.UPCOMING: [TaskState.IN_PROGRESS, TaskState.BLOCKED],
+    TaskState.IN_PROGRESS: [TaskState.COMPLETED, TaskState.BLOCKED, TaskState.UPCOMING],
+    TaskState.BLOCKED: [TaskState.UPCOMING, TaskState.IN_PROGRESS],
     TaskState.COMPLETED: [],  # Terminal state — no going back
 }
 
@@ -146,7 +148,7 @@ def load_tasks() -> dict[str, Task]:
             d = {
                 "id": dt.id,
                 "title": dt.title,
-                "status": dt.state.lower() if dt.state else "pending",
+                "status": dt.state.lower() if dt.state else "upcoming",
                 "assigned_to": dt.assigned_to,
                 "project_id": dt.project_id,
                 "order": dt.order,
@@ -175,7 +177,7 @@ def save_tasks(tasks: dict[str, Task]) -> None:
                 old_state = dt.state
 
             d = task_obj.to_dict()
-            new_state = d.get("status", "pending").upper()
+            new_state = d.get("status", "upcoming").upper()
 
             dt.title = d.get("title")
             dt.state = new_state
