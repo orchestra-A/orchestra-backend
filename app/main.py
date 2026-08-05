@@ -40,6 +40,21 @@ async def startup_event():
     print("[STARTUP] Database tables verified/created.")
     sys.stdout.flush()
 
+    # Database migration for existing data
+    try:
+        from sqlalchemy import text
+        with engine.begin() as conn:
+            conn.execute(text("UPDATE tasks SET status = 'upcoming' WHERE status = 'pending';"))
+            conn.execute(text("UPDATE tasks SET status = 'upcoming' WHERE status = 'PENDING';"))
+            conn.execute(text("UPDATE tasks SET status = 'upcoming' WHERE status = 'todo';"))
+            conn.execute(text("UPDATE tasks SET status = 'blocked' WHERE status = 'stopped';"))
+            conn.execute(text("UPDATE tasks SET status = 'blocked' WHERE status = 'STOPPED';"))
+        print("[MIGRATION] ✅ Status values normalized")
+        sys.stdout.flush()
+    except Exception as e:
+        print(f"[MIGRATION] ⚠️ Status normalization migration warning: {e}")
+        sys.stdout.flush()
+
     asyncio.create_task(start_discord_bot())
     print("[STARTUP] Discord bot task created")
     sys.stdout.flush()

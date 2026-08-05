@@ -20,10 +20,10 @@ TASKS_FILE = "tasks.json"
 
 
 class TaskState(str, Enum):
-    UPCOMING = "UPCOMING"
-    IN_PROGRESS = "IN_PROGRESS"
-    COMPLETED = "COMPLETED"
-    BLOCKED = "BLOCKED"
+    UPCOMING = "upcoming"
+    IN_PROGRESS = "in_progress"
+    COMPLETED = "completed"
+    BLOCKED = "blocked"
 
 
 @dataclass
@@ -62,23 +62,21 @@ class Task:
         self.history.append(
             {
                 "type": "STATUS_CHANGE",
-                "from": old_state,
-                "to": new_state,
+                "from": old_state.value,
+                "to": new_state.value,
                 "actor": actor,
                 "message": reason,
                 "timestamp": timestamp,
             }
         )
-        print(f"[STATE MACHINE] ✅ {self.id}: {old_state} → {new_state} (by {actor})")
+        print(f"[STATE MACHINE] ✅ {self.id}: {old_state.value} → {new_state.value} (by {actor})")
         return True
 
     def to_dict(self) -> dict:
         return {
             "id": self.id,
             "title": self.title,
-            "status": self.state.value.lower()
-            if self.state != TaskState.UPCOMING
-            else "upcoming",
+            "status": self.state.value,
             "assigned_to": self.assigned_to,
             "project_id": self.project_id,
             "order": self.order,
@@ -92,14 +90,18 @@ class Task:
 
     @classmethod
     def from_dict(cls, d: dict) -> "Task":
-        # Map Member 3's 'status' field back to TaskState Enum
+        # Map raw status strings to TaskState Enum
         raw_status = d.get("status", "upcoming").lower()
-        if raw_status in ("pending", "upcoming"):
+        if raw_status in ("todo", "pending", "upcoming"):
             state = TaskState.UPCOMING
-        elif raw_status == "stopped":
+        elif raw_status in ("in_progress", "in progress"):
+            state = TaskState.IN_PROGRESS
+        elif raw_status in ("completed", "done"):
+            state = TaskState.COMPLETED
+        elif raw_status in ("blocked", "stopped"):
             state = TaskState.BLOCKED
         else:
-            state = TaskState(raw_status.upper())
+            state = TaskState(raw_status)
 
         t = cls(
             id=d["id"],
@@ -148,7 +150,7 @@ def load_tasks() -> dict[str, Task]:
             d = {
                 "id": dt.id,
                 "title": dt.title,
-                "status": dt.state.lower() if dt.state else "upcoming",
+                "status": dt.status.lower() if dt.status else "upcoming",
                 "assigned_to": dt.assigned_to,
                 "project_id": dt.project_id,
                 "order": dt.order,
@@ -174,13 +176,13 @@ def save_tasks(tasks: dict[str, Task]) -> None:
                 db.add(dt)
                 old_state = None
             else:
-                old_state = dt.state
+                old_state = dt.status
 
             d = task_obj.to_dict()
-            new_state = d.get("status", "upcoming").upper()
+            new_state = d.get("status", "upcoming").lower()
 
             dt.title = d.get("title")
-            dt.state = new_state
+            dt.status = new_state
             dt.assigned_to = d.get("assigned_to")
             dt.project_id = d.get("project_id")
             dt.order = d.get("order")
@@ -191,10 +193,6 @@ def save_tasks(tasks: dict[str, Task]) -> None:
             dt.history = d.get("history", [])
 
             # If task status has changed, sync to Neo4j Graph DB
-            # If task status has changed, sync to Neo4j Graph DB
-            # Fired in a background thread pool so it never blocks
-            # the request/response cycle, even though save_tasks()
-            # itself is synchronous.
             if old_state != new_state:
                 try:
                     from app.services.graph_service import sync_task_status_to_neo4j
@@ -235,24 +233,29 @@ def create_task(task_id: str, title: str) -> Task:
 def extract_task_id_from_branch(branch: str) -> Optional[str]:
     """
     Extracts task ID from branch name.
-    Normalizes it to "task_00X" format to match DB.
+    Normalizes it to "task_00X" format to match DB if old format.
     Examples:
-      "feature/task-12"  → "task_012"
-      "fix/task-7-login" → "task_007"
-      "main"             → None
+      "feature/P001-T042" → "P001-T042"
+      "feature/task-12"   → "task_012"
+      "fix/task-7-login"  → "task_007"
+      "main"              → None
     """
     import re
 
-    match = re.search(r"task[-_](\d+)", branch, re.IGNORECASE)
-    if match:
-        return f"task_{match.group(1).zfill(3)}"
+    match_new = re.search(r"(P\w+-T\d+)", branch, re.IGNORECASE)
+    if match_new:
+        return match_new.group(1).upper()
+
+    match_old = re.search(r"task[-_](\d+)", branch, re.IGNORECASE)
+    if match_old:
+        return f"task_{match_old.group(1).zfill(3)}"
     return None
 
 
 def extract_task_id_from_pr_title(title: str) -> Optional[str]:
     """
     Extracts task ID from PR title.
-    Normalizes it to "task_00X" format to match DB.
+    Normalizes it to "task_00X" format to match DB if old format.
     Examples:
       "Fixes task-12: Add normalizer"   → "task_012"
       "Closes task-7"                   → "task_007"
@@ -260,9 +263,13 @@ def extract_task_id_from_pr_title(title: str) -> Optional[str]:
     """
     import re
 
-    match = re.search(r"task[-_](\d+)", title, re.IGNORECASE)
-    if match:
-        return f"task_{match.group(1).zfill(3)}"
+    match_new = re.search(r"(P\w+-T\d+)", title, re.IGNORECASE)
+    if match_new:
+        return match_new.group(1).upper()
+
+    match_old = re.search(r"task[-_](\d+)", title, re.IGNORECASE)
+    if match_old:
+        return f"task_{match_old.group(1).zfill(3)}"
     return None
 
 
