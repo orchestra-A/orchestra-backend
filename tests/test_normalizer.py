@@ -337,6 +337,32 @@ check("Figma falls back to actor.handle", event_figma_actor.actor == "figma_desi
 
 
 # ─────────────────────────────────────────────
+# Test 13: GitHub Branch Creation & Deletion
+# ─────────────────────────────────────────────
+section("Test 13: GitHub Branch Creation & Deletion")
+
+branch_create_payload = {
+    "ref": "refs/heads/feature/new-branch",
+    "created": True,
+    "deleted": False,
+    "commits": [],
+    "pusher": {"name": "arnav"}
+}
+event_create = normalize_event("push", branch_create_payload)
+check("Branch creation summary", event_create.action_summary == "arnav created branch feature/new-branch")
+
+branch_delete_payload = {
+    "ref": "refs/heads/feature/old-branch",
+    "created": False,
+    "deleted": True,
+    "commits": [],
+    "pusher": {"name": "arnav"}
+}
+event_delete = normalize_event("push", branch_delete_payload)
+check("Branch deletion summary", event_delete.action_summary == "arnav deleted branch feature/old-branch")
+
+
+# ─────────────────────────────────────────────
 # Final summary
 # ─────────────────────────────────────────────
 total = len(results)

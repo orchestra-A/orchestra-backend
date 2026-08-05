@@ -45,6 +45,13 @@ def _normalize_github_push(body: dict) -> NormalizedEvent:
 
     timestamp = _extract_timestamp(body)
 
+    if body.get("created"):
+        action_summary = f"{pusher} created branch {branch}"
+    elif body.get("deleted"):
+        action_summary = f"{pusher} deleted branch {branch}"
+    else:
+        action_summary = f"{pusher} pushed {len(commits)} commit(s) to {branch}"
+
     return NormalizedEvent(
         id=str(uuid.uuid4()),
         platform="github",
@@ -52,7 +59,7 @@ def _normalize_github_push(body: dict) -> NormalizedEvent:
         actor=pusher,
         timestamp=timestamp,
         repo=body.get("repository", {}).get("full_name"),
-        action_summary=(f"{pusher} pushed {len(commits)} commit(s) to {branch}"),
+        action_summary=action_summary,
         raw_metadata={
             "branch": branch,
             "commit_count": len(commits),
