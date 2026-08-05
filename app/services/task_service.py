@@ -27,11 +27,15 @@ def update_task_status(task_id: str, new_status: str) -> bool:
     from sqlalchemy.orm.attributes import flag_modified
 
     # Normalize incoming status to align with AI team canonical words
-    canonical_status = new_status.upper()
-    if canonical_status == "PENDING":
-        canonical_status = "UPCOMING"
-    elif canonical_status == "STOPPED":
-        canonical_status = "BLOCKED"
+    canonical_status = new_status.lower()
+    if canonical_status in ("pending", "todo", "upcoming"):
+        canonical_status = "upcoming"
+    elif canonical_status in ("stopped", "blocked"):
+        canonical_status = "blocked"
+    elif canonical_status in ("in progress", "in_progress"):
+        canonical_status = "in_progress"
+    elif canonical_status in ("completed", "done"):
+        canonical_status = "completed"
     new_status = canonical_status
 
     db = SessionLocal()
