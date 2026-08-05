@@ -26,6 +26,14 @@ def update_task_status(task_id: str, new_status: str) -> bool:
     from models_sql import TaskTable
     from sqlalchemy.orm.attributes import flag_modified
 
+    # Normalize incoming status to align with AI team canonical words
+    canonical_status = new_status.upper()
+    if canonical_status == "PENDING":
+        canonical_status = "UPCOMING"
+    elif canonical_status == "STOPPED":
+        canonical_status = "BLOCKED"
+    new_status = canonical_status
+
     db = SessionLocal()
     try:
         task = db.query(TaskTable).filter(TaskTable.id == task_id).first()

@@ -28,7 +28,7 @@ async def get_tasks(project_id: Optional[str] = None):
                 {
                     "id": t.id,
                     "title": t.title,
-                    "status": t.status.lower() if t.status else "pending",
+                    "status": t.status.lower() if t.status else "upcoming",
                     "track": t.track,
                     "description": t.description,
                     "priority": t.priority,
@@ -61,7 +61,7 @@ async def get_single_task(task_id: str):
             return {
                 "id": t.id,
                 "title": t.title,
-                "status": t.status.lower() if t.status else "pending",
+                "status": t.status.lower() if t.status else "upcoming",
                 "track": t.track,
                 "description": t.description,
                 "priority": t.priority,
@@ -107,7 +107,7 @@ async def create_new_task(request: Request):
     new_task = {
         "id": task_id,
         "title": title,
-        "status": "pending",
+        "status": "upcoming",
         "track": track,
         "description": description,
         "priority": priority,
@@ -128,7 +128,7 @@ async def create_new_task(request: Request):
             new_db_task = TaskTable(
                 id=task_id,
                 title=title,
-                status="PENDING",
+                status="UPCOMING",
                 track=track,
                 description=description,
                 priority=priority,
