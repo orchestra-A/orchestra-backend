@@ -4,7 +4,7 @@ import os
 import sys
 from datetime import datetime, timezone
 from typing import Optional
-from fastapi import APIRouter, Request, Response
+from fastapi import APIRouter, Request, Response, Body
 from fastapi.responses import JSONResponse
 import httpx
 from database import SessionLocal
@@ -12,7 +12,7 @@ from models_sql import TaskTable, UserTable
 from sqlalchemy.orm.attributes import flag_modified
 
 from app.utils.websocket_manager import manager
-from app.schemas.task import TaskStatusUpdate
+from app.schemas.task import TaskStatusUpdate, TaskAssignRequest
 from app.services.task_service import update_task_status
 
 router = APIRouter()
@@ -220,11 +220,13 @@ async def manually_update_task_status(task_id: str, request: TaskStatusUpdate):
 
 
 @router.patch("/tasks/{task_id}/assign")
-async def manually_reassign_task(task_id: str, request: Request):
-    body = await request.json()
-    new_assignee = body.get("assigned_to")
-    if new_assignee is None:
-        return JSONResponse(status_code=400, content={"error": "'assigned_to' is required"})
+async def manually_reassign_task(task_id: str, payload: TaskAssignRequest = Body(None)):
+    if payload is None:
+        return JSONResponse(status_code=400, content={"error": "No fields provided"})
+    
+    provided_fields = payload.model_dump(exclude_unset=True)
+    if not provided_fields:
+        return JSONResponse(status_code=400, content={"error": "No fields provided"})
 
     db = SessionLocal()
     try:
@@ -233,21 +235,39 @@ async def manually_reassign_task(task_id: str, request: Request):
             return JSONResponse(status_code=404, content={"error": "Task not found"})
 
         now_iso = datetime.now(timezone.utc).isoformat()
-        task.assigned_to = new_assignee
-        task.updated_at = now_iso
+        changed = False
 
-        if not task.history:
-            task.history = []
-        task.history.append({
-            "type": "REASSIGNMENT",
-            "to": new_assignee,
-            "actor": "manual",
-            "timestamp": now_iso
-        })
-        flag_modified(task, "history")
+        if "title" in provided_fields:
+            task.title = payload.title
+            changed = True
+
+        if "description" in provided_fields:
+            task.description = payload.description
+            changed = True
+
+        if "assigned_to" in provided_fields:
+            task.assigned_to = payload.assigned_to
+            if not task.history:
+                task.history = []
+            task.history.append({
+                "type": "REASSIGNMENT",
+                "to": payload.assigned_to,
+                "actor": "manual",
+                "timestamp": now_iso
+            })
+            flag_modified(task, "history")
+            changed = True
+
+        if "track" in provided_fields:
+            task.track = payload.track
+            changed = True
+
+        if changed:
+            task.updated_at = now_iso
+
         db.commit()
 
-        print(f"[REASSIGN] Task {task_id} manually reassigned to {new_assignee}")
+        print(f"[UPDATE TASK] Task {task_id} manually updated")
         sys.stdout.flush()
 
         task_dict = {
