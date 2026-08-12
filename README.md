@@ -1,28 +1,14 @@
-# Orchestra Central Backend
+# Orchestra Backend
 
-This repository contains the centralized API server for the Orchestra project, handling live ingestion and data normalization across all supported platforms.
+The centralized API server for the Orchestra project, handling live ingestion, data normalization, database persistence, and real-time state machine updates via WebSockets.
 
-## Architecture Overview
+## What it does
 
-The backend is composed of two primary tracks working in tandem:
-
-### 1. Infrastructure Layer
-Responsible for core server hosting, API endpoint routing, securely managing user identities, and receiving incoming webhook events.
-- Hosted permanently on Render (`https://orchestra-backend-30fy.onrender.com`).
-- Manages user profiles and platform integrations securely via a robust PostgreSQL relational database, strictly adhering to the AI Team's Data Contracts.
-- Automatically registers GitHub webhooks for new users using OAuth.
-- Catches live webhook events via dedicated endpoints (`/webhook/github`, `/webhook/discord`, `/webhook/figma`).
-- Validates payload security (e.g., verifying `X-Hub-Signature-256` HMAC hashes for GitHub).
-- Serves live task data and REST endpoints (`/tasks`, `/tasks/{id}`) for the frontend team directly from PostgreSQL.
-- Hosts a live WebSocket server at `/ws` for real-time state machine updates.
-
-### 2. Data Pipeline Layer
-Responsible for transforming raw, multi-platform events into a clean, uniform format.
-- Parses incoming JSON payloads and extracts crucial metadata (branch, commits, sender).
-- Routes messy data through the **Semantic Data Normalizer** (`normalizer.py`).
-  - Persists standardized timeline blocks into a live serverless PostgreSQL database via SQLAlchemy, accessible via the `GET /events` endpoint.
-
----
+1. **Event Ingestion** — catches live webhooks from GitHub, Discord, and Figma
+2. **Data Normalization** — scrubs raw, multi-platform payloads into a unified `NormalizedEvent` structure
+3. **Live Sync** — broadcasts task state transitions and daily summaries in real-time to all connected frontend clients via WebSockets
+4. **AI Proxying** — securely routes requests to the AI server without exposing the `INTERNAL_API_KEY` to the client browser
+5. **Persistence** — manages users, tasks, events, and dynamic platform integrations securely in a PostgreSQL relational database
 
 ## Project Structure
 
@@ -74,65 +60,6 @@ orchestra-backend/
 └── tests/                       # Test files
     └── ...
 ```
-
----
-
-## Component Descriptions
-
-### Entry Points
-- **`main.py`**: Bootstrap wrapper that imports the FastAPI app from `app.main` and initializes key services.
-- **`app/main.py`**: Creates the FastAPI application instance, configures CORS middleware, registers route handlers, and sets up startup/shutdown events.
-
-### Core Configuration (`app/core/`)
-- **`config.py`**: Centralized environment variable management. Loads all API keys and configuration from environment variables with sensible defaults.
-
-### Routes (`app/routes/`)
-The routing layer handles HTTP request/response lifecycle:
-
-| Route File | Endpoint Pattern | Description |
-|------------|------------------|-------------|
-| `auth.py` | `/auth/*` | OAuth flows for GitHub, Discord, Google |
-| `github.py` | `/webhook/github` | GitHub webhook receiver and processor |
-| `discord.py` | `/webhook/discord` | Discord webhook endpoints |
-| `tasks.py` | `/tasks/*` | Task CRUD operations with state management |
-| `events.py` | `/events` | Event retrieval and filtering |
-| `projects.py` | `/projects/*` | Project management, tracking configurations, and cascading deletions |
-| `graph.py` | `/graph/*` | Graph database query endpoints |
-| `websocket.py` | `/ws` | Real-time WebSocket connections |
-
-### Services (`app/services/`)
-Business logic layer that orchestrates operations:
-
-- **`github_service.py`**: Handles GitHub API calls, webhook signature validation, and repository operations.
-- **`discord_service.py`**: Manages Discord bot lifecycle, message processing, and channel interactions.
-- **`task_service.py`**: Core task business logic including creation, updates, and state transitions.
-- **`event_service.py`**: Event persistence and retrieval from PostgreSQL.
-- **`oauth_service.py`**: OAuth token exchange and refresh logic for all platforms.
-- **`graph_service.py`**: Neo4j graph database synchronization for task relationships.
-- **`ai_service.py`**: Proxy layer for AI service interactions (blueprints, graphs) featuring real-time streaming and Neo4j deletion cleanup.
-- **`standup_service.py`**: Generates standup reports from event data.
-
-### Schemas (`app/schemas/`)
-Pydantic models for request validation and response serialization:
-
-- **`task.py`**: Task creation/update request models, task response schemas.
-- **`ai.py`**: AI service request/response models for proxy endpoints.
-
-### Utilities (`app/utils/`)
-Shared helper functions:
-
-- **`websocket_manager.py`**: `ConnectionManager` class that handles WebSocket connections, disconnections, and message broadcasting to all connected clients.
-
-### Core Modules (Root Level)
-
-| Module | Purpose |
-|--------|---------|
-| `models.py` | `NormalizedEvent` Pydantic model - the universal event schema |
-| `models_sql.py` | SQLAlchemy ORM models: `EventTable`, `TaskTable`, `UserTable`, `PlatformIntegrationTable`, `ProjectTable` (with dynamic tracking) |
-| `database.py` | Database engine creation, session management, connection pooling with retry logic |
-| `state_machine.py` | Task state transitions (`PENDING → IN_PROGRESS → COMPLETED → BLOCKED`) with history tracking |
-| `scheduler.py` | APScheduler-based background jobs: daily summaries, heartbeats, stale task detection |
-| `normalizer.py` | Transforms raw GitHub/Discord/Figma payloads into `NormalizedEvent` objects |
 
 ---
 
@@ -198,6 +125,7 @@ Task Request (REST API or WebSocket)
 - `assigned_to` (String): Assigned developer username
 - `project_id` (String, FK): Parent project
 - `depends_on` (JSON): Dependent task IDs
+- `deadline` (String): ISO timestamp for task completion
 - `history` (JSON): State change audit trail
 
 **events**
@@ -206,15 +134,19 @@ Task Request (REST API or WebSocket)
 - `event_type` (String): Event category (push/pull_request/message)
 - `actor` (String): Event triggerer username
 - `raw_metadata` (JSON): Original payload preserved
+- `project_id` (String, FK): Associated project ID
 
 **projects**
 - `id` (String, PK): Generated project ID (proj_XXXXXXXX)
 - `name` (String): Project name
+- `created_by` (String): Creator's user ID
 - `members` (JSON): Team member user IDs
 - `tech_stack` (JSON): Technology list
 - `tracked_repos` (JSON): Dynamically tracked GitHub repositories
 - `tracked_channels` (JSON): Dynamically tracked Discord webhook URLs
 - `is_archived` (Boolean): Archive status flag
+- `blueprint_summary` (String): AI-generated project summary
+- `github_repo_url` (String): Primary GitHub repository URL
 
 **platform_integrations**
 - `id` (String, PK): Integration identifier
@@ -323,12 +255,13 @@ The scheduler runs three recurring tasks:
 
 ---
 
-## Current Status
+## Live URLs
 
-- **Week 1:** Complete (Infrastructure boilerplate & Webhooks).
-- **Week 2:** Complete (Data Pipeline Normalizer).
-- **Week 3:** Complete (Task REST Endpoints, WebSocket Integration, Background Schedulers).
-- **Week 4:** Complete (Full PostgreSQL Migration for tasks, events, user profiles, and dynamic platform integrations).
-- **Week 5:** Complete (AI Server Proxy Integration for blueprints and graphs).
-- **Week 6:** Complete (Database Seeding, Task Status API with Pydantic schemas, AI proxy refinement, and system stability fixes).
-- **Week 7:** Complete (Dynamic project tracking configuration, AI streaming capabilities, cascading deletions, and automated GitHub webhooks).
+| Service | URL |
+|---------|-----|
+| AI Server | https://orchestra-ai-36zm.onrender.com |
+| Backend | https://orchestra-backend-30fy.onrender.com |
+
+## Stack
+
+Python · FastAPI · PostgreSQL · SQLAlchemy · APScheduler · WebSockets · Render
