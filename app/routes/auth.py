@@ -323,3 +323,30 @@ async def update_user_patch(user_id: str, payload: dict):
         return Response(content='{"message": "User patched successfully"}', media_type="application/json")
     finally:
         db.close()
+
+
+@router.delete("/users/{user_id}")
+async def delete_user(user_id: str):
+    from database import SessionLocal
+    from models_sql import UserTable, PlatformIntegrationTable
+
+    db = SessionLocal()
+    try:
+        user = db.query(UserTable).filter_by(id=user_id).first()
+        if not user:
+            return Response(content='{"error": "User not found"}', media_type="application/json", status_code=404)
+        
+        # Delete related platform integrations
+        db.query(PlatformIntegrationTable).filter_by(user_id=user_id).delete()
+        
+        # Delete user
+        db.delete(user)
+        
+        db.commit()
+        return Response(content='{"message": "User and integrations deleted successfully"}', media_type="application/json")
+    except Exception as e:
+        db.rollback()
+        print(f"[AUTH] Error deleting user {user_id}: {e}")
+        return Response(content=json.dumps({"error": str(e)}), media_type="application/json", status_code=500)
+    finally:
+        db.close()

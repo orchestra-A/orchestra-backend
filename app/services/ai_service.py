@@ -24,7 +24,8 @@ async def post_blueprint_data(body: dict):
 
 
 async def post_clover_data_stream(body: dict):
-    async with httpx.AsyncClient() as client:
+    client = httpx.AsyncClient()
+    try:
         async with client.stream(
             "POST",
             f"{AI_SERVICE_URL}/clover",
@@ -36,8 +37,10 @@ async def post_clover_data_stream(body: dict):
                 error_body = await response.aread()
                 yield error_body
                 return
-            async for chunk in response.aiter_bytes():
+            async for chunk in response.aiter_raw():
                 yield chunk
+    finally:
+        await client.aclose()
 
 
 async def delete_ai_project(project_id: str):
