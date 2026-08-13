@@ -67,6 +67,8 @@ def save_unified_user_profile(
                         meta = item.platform_metadata or {}
                         if meta.get("username", "").lower() == discord_username.strip().lower() or meta.get("discord_id") == discord_id:
                             user = db.query(UserTable).filter_by(id=item.user_id).first()
+                            if user:
+                                break
             if not user and google_id:
                 # Search by Google integration metadata
                 pi = db.query(PlatformIntegrationTable).filter_by(platform_name="google").all()
