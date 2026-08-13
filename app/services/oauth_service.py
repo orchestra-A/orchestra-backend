@@ -46,12 +46,37 @@ def save_unified_user_profile(
             if existing_user_id:
                 user = db.query(UserTable).filter_by(id=existing_user_id).first()
             if not user and email:
-                user = db.query(UserTable).filter_by(email=email).first()
+                user = db.query(UserTable).filter(UserTable.email.ilike(email.strip())).first()
             if not user and github_username:
-                user = db.query(UserTable).filter_by(username=github_username).first()
+                user = db.query(UserTable).filter(UserTable.username.ilike(github_username.strip())).first()
+                if not user:
+                    # Search by GitHub integration metadata
+                    pi = db.query(PlatformIntegrationTable).filter_by(platform_name="github").all()
+                    for item in pi:
+                        meta = item.platform_metadata or {}
+                        if meta.get("username", "").lower() == github_username.strip().lower():
+                            user = db.query(UserTable).filter_by(id=item.user_id).first()
+                            if user:
+                                break
             if not user and discord_username:
-                user = db.query(UserTable).filter_by(username=discord_username).first()
-    
+                user = db.query(UserTable).filter(UserTable.username.ilike(discord_username.strip())).first()
+                if not user:
+                    # Search by Discord integration metadata
+                    pi = db.query(PlatformIntegrationTable).filter_by(platform_name="discord").all()
+                    for item in pi:
+                        meta = item.platform_metadata or {}
+                        if meta.get("username", "").lower() == discord_username.strip().lower() or meta.get("discord_id") == discord_id:
+                            user = db.query(UserTable).filter_by(id=item.user_id).first()
+            if not user and google_id:
+                # Search by Google integration metadata
+                pi = db.query(PlatformIntegrationTable).filter_by(platform_name="google").all()
+                for item in pi:
+                    meta = item.platform_metadata or {}
+                    if meta.get("google_id") == google_id:
+                        user = db.query(UserTable).filter_by(id=item.user_id).first()
+                        if user:
+                            break
+
             if not user:
                 user_id = f"usr_{str(uuid.uuid4())[:8]}"
                 primary_username = github_username or discord_username or (email.split("@")[0] if email else f"user_{str(uuid.uuid4())[:4]}")
