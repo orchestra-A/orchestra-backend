@@ -24,6 +24,7 @@ class TaskState(str, Enum):
     IN_PROGRESS = "in_progress"
     COMPLETED = "completed"
     BLOCKED = "blocked"
+    HALTED = "halted"
 
 
 @dataclass
@@ -100,6 +101,8 @@ class Task:
             state = TaskState.COMPLETED
         elif raw_status in ("blocked", "stopped"):
             state = TaskState.BLOCKED
+        elif raw_status in ("halted",):
+            state = TaskState.HALTED
         else:
             state = TaskState(raw_status)
 
@@ -125,9 +128,10 @@ class Task:
 # ─────────────────────────────────────────────
 
 TRANSITIONS: dict[TaskState, list[TaskState]] = {
-    TaskState.UPCOMING: [TaskState.IN_PROGRESS, TaskState.BLOCKED],
-    TaskState.IN_PROGRESS: [TaskState.COMPLETED, TaskState.BLOCKED, TaskState.UPCOMING],
+    TaskState.UPCOMING: [TaskState.IN_PROGRESS, TaskState.BLOCKED, TaskState.HALTED],
+    TaskState.IN_PROGRESS: [TaskState.COMPLETED, TaskState.BLOCKED, TaskState.UPCOMING, TaskState.HALTED],
     TaskState.BLOCKED: [TaskState.UPCOMING, TaskState.IN_PROGRESS],
+    TaskState.HALTED: [TaskState.UPCOMING, TaskState.IN_PROGRESS],
     TaskState.COMPLETED: [],  # Terminal state — no going back
 }
 

@@ -157,6 +157,78 @@ async def stale_task_check_job():
 
 
 # ─────────────────────────────────────────────
+# Job 4: Deadline check every 15 minutes
+# ─────────────────────────────────────────────
+
+
+async def deadline_check_job():
+    """
+    Finds tasks where the deadline has passed and marks them as halted.
+    """
+    from database import SessionLocal
+    from models_sql import TaskTable
+    from app.utils.websocket_manager import manager
+    from datetime import datetime, timezone
+
+    db = SessionLocal()
+    try:
+        now = datetime.now(timezone.utc).isoformat()
+        tasks = db.query(TaskTable).filter(
+            TaskTable.status.notin_(["completed", "halted", "blocked"]),
+            TaskTable.deadline.isnot(None)
+        ).all()
+        
+        halted_tasks = []
+        for t in tasks:
+            if t.deadline < now:
+                old_status = t.status
+                t.status = "halted"
+                
+                history_entry = {
+                    "type": "STATUS_CHANGE",
+                    "from": old_status,
+                    "to": "halted",
+                    "actor": "scheduler",
+                    "message": "Deadline passed",
+                    "timestamp": now,
+                }
+                
+                if t.history is None:
+                    t.history = [history_entry]
+                else:
+                    new_history = list(t.history)
+                    new_history.append(history_entry)
+                    t.history = new_history
+                    
+                halted_tasks.append(t)
+                
+        if halted_tasks:
+            db.commit()
+            
+            for task in halted_tasks:
+                event = {
+                    "id": f"deadline-passed-{task.id}",
+                    "platform": "system",
+                    "event_type": "deadline_passed",
+                    "actor": "scheduler",
+                    "timestamp": now,
+                    "action_summary": f"Task '{task.title}' deadline passed, marked as halted",
+                    "raw_metadata": {
+                        "task_id": task.id,
+                        "task_title": task.title,
+                        "deadline": task.deadline
+                    },
+                    "type": "new_event",
+                }
+                await manager.broadcast(event)
+                print(f"[SCHEDULER] Task {task.id} deadline passed, marked as halted.")
+    except Exception as e:
+        print(f"[SCHEDULER] Error checking deadlines: {e}")
+    finally:
+        db.close()
+
+
+# ─────────────────────────────────────────────
 # Start / Stop
 # ─────────────────────────────────────────────
 
@@ -180,8 +252,14 @@ def start_scheduler():
         id="stale_task_check",
         replace_existing=True,
     )
+    scheduler.add_job(
+        deadline_check_job,
+        IntervalTrigger(minutes=15),
+        id="deadline_check",
+        replace_existing=True,
+    )
     scheduler.start()
-    print("[SCHEDULER] Started — daily_summary, heartbeat, stale_task_check")
+    print("[SCHEDULER] Started — daily_summary, heartbeat, stale_task_check, deadline_check")
 
 
 def stop_scheduler():

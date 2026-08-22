@@ -328,13 +328,28 @@ async def update_user_patch(user_id: str, payload: dict):
 @router.delete("/users/{user_id}")
 async def delete_user(user_id: str):
     from database import SessionLocal
-    from models_sql import UserTable, PlatformIntegrationTable
+    from models_sql import UserTable, PlatformIntegrationTable, ProjectTable, TaskTable, EventTable
 
     db = SessionLocal()
     try:
         user = db.query(UserTable).filter_by(id=user_id).first()
         if not user:
             return Response(content='{"error": "User not found"}', media_type="application/json", status_code=404)
+        
+        # Archive projects created by the user
+        db.query(ProjectTable).filter_by(created_by=user_id).update({"is_archived": True})
+        
+        # Update project members (replace user_id with None/null)
+        projects = db.query(ProjectTable).all()
+        for p in projects:
+            if p.members and user_id in p.members:
+                p.members = [None if m == user_id else m for m in p.members]
+                db.add(p)
+                
+        # Nullify tasks and events linked to the user's username
+        if user.username:
+            db.query(TaskTable).filter_by(assigned_to=user.username).update({"assigned_to": None})
+            db.query(EventTable).filter_by(actor=user.username).update({"actor": None})
         
         # Delete related platform integrations
         db.query(PlatformIntegrationTable).filter_by(user_id=user_id).delete()
