@@ -23,74 +23,71 @@ scheduler = AsyncIOScheduler(timezone="UTC")
 
 async def daily_summary_job():
     """
-    Reads all events from last 24 hours.
+    Reads all events from last 24 hours from PostgreSQL.
     Groups by developer.
     Broadcasts a summary digest to all connected clients.
     """
     from app.utils.websocket_manager import manager
+    from database import SessionLocal
+    from models_sql import EventTable
 
+    db = SessionLocal()
     try:
-        with open("events.json") as f:
-            events = json.load(f)
-    except FileNotFoundError:
-        print("[SCHEDULER] No events.json found, skipping daily summary")
-        return
-    except json.JSONDecodeError:
-        print("[SCHEDULER] Failed to decode events.json")
-        return
+        cutoff = (datetime.now(timezone.utc) - timedelta(hours=24)).isoformat()
+        recent = db.query(EventTable).filter(EventTable.timestamp >= cutoff).all()
+        
+        if not recent:
+            print("[SCHEDULER] No events in last 24h, skipping summary")
+            return
 
-    # Filter last 24 hours
-    cutoff = (datetime.now(timezone.utc) - timedelta(hours=24)).isoformat()
-    recent = [e for e in events if e.get("timestamp", "") >= cutoff]
+        # Group by developer
+        by_actor: dict[str, list] = {}
+        for event in recent:
+            actor = event.actor or "unknown"
+            by_actor.setdefault(actor, []).append(event)
 
-    if not recent:
-        print("[SCHEDULER] No events in last 24h, skipping summary")
-        return
+        # Build summary lines
+        lines = []
+        for actor, actor_events in by_actor.items():
+            pushes = [e for e in actor_events if e.event_type == "push"]
+            prs = [e for e in actor_events if e.event_type == "pull_request"]
+            msgs = [e for e in actor_events if e.event_type == "message"]
 
-    # Group by developer
-    by_actor: dict[str, list] = {}
-    for event in recent:
-        actor = event.get("actor", "unknown")
-        by_actor.setdefault(actor, []).append(event)
+            parts = []
+            if pushes:
+                parts.append(f"{len(pushes)} push(es)")
+            if prs:
+                parts.append(f"{len(prs)} PR action(s)")
+            if msgs:
+                parts.append(f"{len(msgs)} Discord message(s)")
 
-    # Build summary lines
-    lines = []
-    for actor, actor_events in by_actor.items():
-        pushes = [e for e in actor_events if e.get("event_type") == "push"]
-        prs = [e for e in actor_events if e.get("event_type") == "pull_request"]
-        msgs = [e for e in actor_events if e.get("event_type") == "message"]
+            if parts:
+                lines.append(f"• {actor}: {', '.join(parts)}")
 
-        parts = []
-        if pushes:
-            parts.append(f"{len(pushes)} push(es)")
-        if prs:
-            parts.append(f"{len(prs)} PR action(s)")
-        if msgs:
-            parts.append(f"{len(msgs)} Discord message(s)")
+        summary = {
+            "id": f"summary-{datetime.now(timezone.utc).date()}",
+            "platform": "system",
+            "event_type": "daily_summary",
+            "actor": "scheduler",
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "action_summary": f"Daily digest — {len(recent)} events, {len(by_actor)} developer(s) active",
+            "raw_metadata": {
+                "date": str(datetime.now(timezone.utc).date()),
+                "total_events": len(recent),
+                "by_actor": {actor: len(evts) for actor, evts in by_actor.items()},
+                "breakdown": lines,
+            },
+            "type": "new_event",
+        }
 
-        if parts:
-            lines.append(f"• {actor}: {', '.join(parts)}")
-
-    summary = {
-        "id": f"summary-{datetime.now(timezone.utc).date()}",
-        "platform": "system",
-        "event_type": "daily_summary",
-        "actor": "scheduler",
-        "timestamp": datetime.now(timezone.utc).isoformat(),
-        "action_summary": f"Daily digest — {len(recent)} events, {len(by_actor)} developer(s) active",
-        "raw_metadata": {
-            "date": str(datetime.now(timezone.utc).date()),
-            "total_events": len(recent),
-            "by_actor": {actor: len(evts) for actor, evts in by_actor.items()},
-            "breakdown": lines,
-        },
-        "type": "new_event",
-    }
-
-    await manager.broadcast(summary)
-    print(
-        f"[SCHEDULER] Daily summary sent — {len(recent)} events, {len(by_actor)} developers"
-    )
+        await manager.broadcast(summary)
+        print(
+            f"[SCHEDULER] Daily summary sent — {len(recent)} events, {len(by_actor)} developers"
+        )
+    except Exception as e:
+        print(f"[SCHEDULER] Error generating daily summary: {e}")
+    finally:
+        db.close()
 
 
 # ─────────────────────────────────────────────
@@ -126,6 +123,8 @@ async def stale_task_check_job():
     for t in tasks.values():
         if t.state == TaskState.IN_PROGRESS:
             last_updated = t.history[-1]["timestamp"] if t.history else t.created_at
+            if last_updated is None:
+                continue
             if last_updated < cutoff:
                 # Attach the stuck time temporarily for the broadcast
                 t._stuck_since = last_updated
@@ -167,65 +166,56 @@ async def deadline_check_job():
     """
     from database import SessionLocal
     from models_sql import TaskTable
+    from state_machine import get_task, upsert_task, TaskState
     from app.utils.websocket_manager import manager
     from datetime import datetime, timezone
 
     db = SessionLocal()
     try:
         now = datetime.now(timezone.utc).isoformat()
-        tasks = db.query(TaskTable).filter(
+        db_tasks = db.query(TaskTable.id, TaskTable.title, TaskTable.deadline).filter(
             TaskTable.status.notin_(["completed", "halted", "blocked"]),
-            TaskTable.deadline.isnot(None)
+            TaskTable.deadline.isnot(None),
         ).all()
         
-        halted_tasks = []
-        for t in tasks:
-            if t.deadline < now:
-                old_status = t.status
-                t.status = "halted"
-                
-                history_entry = {
-                    "type": "STATUS_CHANGE",
-                    "from": old_status,
-                    "to": "halted",
-                    "actor": "scheduler",
-                    "message": "Deadline passed",
-                    "timestamp": now,
-                }
-                
-                if t.history is None:
-                    t.history = [history_entry]
-                else:
-                    new_history = list(t.history)
-                    new_history.append(history_entry)
-                    t.history = new_history
-                    
-                halted_tasks.append(t)
-                
-        if halted_tasks:
-            db.commit()
-            
-            for task in halted_tasks:
-                event = {
-                    "id": f"deadline-passed-{task.id}",
-                    "platform": "system",
-                    "event_type": "deadline_passed",
-                    "actor": "scheduler",
-                    "timestamp": now,
-                    "action_summary": f"Task '{task.title}' deadline passed, marked as halted",
-                    "raw_metadata": {
-                        "task_id": task.id,
-                        "task_title": task.title,
-                        "deadline": task.deadline
-                    },
-                    "type": "new_event",
-                }
-                await manager.broadcast(event)
-                print(f"[SCHEDULER] Task {task.id} deadline passed, marked as halted.")
+        stale_task_records = [t for t in db_tasks if t.deadline < now]
     except Exception as e:
         print(f"[SCHEDULER] Error checking deadlines: {e}")
+        stale_task_records = []
     finally:
         db.close()
+        
+    if not stale_task_records:
+        return
+        
+    halted_tasks = []
+    for t_db in stale_task_records:
+        task_obj = get_task(t_db.id)
+        if task_obj:
+            changed = task_obj.transition(
+                TaskState.HALTED, actor="scheduler", reason="Deadline passed"
+            )
+            if changed:
+                upsert_task(task_obj)
+                halted_tasks.append(t_db)
+
+    for task in halted_tasks:
+        event = {
+            "id": f"deadline-passed-{task.id}",
+            "platform": "system",
+            "event_type": "deadline_passed",
+            "actor": "scheduler",
+            "timestamp": now,
+            "action_summary": f"Task '{task.title}' deadline passed, marked as halted",
+            "raw_metadata": {
+                "task_id": task.id,
+                "task_title": task.title,
+                "deadline": task.deadline
+            },
+            "type": "new_event",
+        }
+        await manager.broadcast(event)
+        print(f"[SCHEDULER] Task {task.id} deadline passed, marked as halted.")
 
 
 # ─────────────────────────────────────────────
