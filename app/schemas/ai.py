@@ -7,6 +7,8 @@ class BlueprintRequest(BaseModel):
     tech_stack: List[str]
     created_by: str
     members: List[str] = []
+    tracked_repos: List[str] = []
+    tracked_channels: List[str] = []
 
     model_config = {
         "json_schema_extra": {
@@ -27,6 +29,7 @@ class CloverRequest(BaseModel):
     user_id: str
     conversation_history: List[Dict[str, Any]] = []
     project_id: Optional[str] = None
+    page: Optional[str] = None
 
     model_config = {
         "json_schema_extra": {
