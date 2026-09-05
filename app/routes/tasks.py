@@ -87,10 +87,21 @@ async def get_single_task(task_id: str):
 
 
 @router.post("/tasks")
-async def create_new_task(request: Request):
+async def create_new_task(request: Request, user_id: Optional[str] = None):
     body = await request.json()
+    req_user_id = user_id or body.get("user_id")
     title = body.get("title", "Untitled")
     project_id = body.get("project_id")
+
+    if project_id:
+        db = SessionLocal()
+        try:
+            from models_sql import ProjectTable
+            p = db.query(ProjectTable).filter(ProjectTable.id == project_id).first()
+            if p and (not req_user_id or p.created_by != req_user_id):
+                return JSONResponse(status_code=403, content={"error": "Only the project creator can add tasks"})
+        finally:
+            db.close()
 
     # Generate custom task ID format: P{project_id}-T{num}
     db = SessionLocal()
