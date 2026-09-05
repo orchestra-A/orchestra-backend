@@ -12,15 +12,26 @@ async def get_team_data():
     return response
 
 
-async def post_blueprint_data(body: dict):
-    async with httpx.AsyncClient() as client:
-        response = await client.post(
-            f"{AI_SERVICE_URL}/blueprint",
+async def post_blueprint_data_stream(body: dict):
+    client = httpx.AsyncClient()
+    try:
+        # Increase read timeout to prevent idle termination (D-01)
+        timeout = httpx.Timeout(120.0, read=None)
+        async with client.stream(
+            "POST",
+            f"{AI_SERVICE_URL}/blueprint/stream",
             json=body,
             headers={"x-api-key": INTERNAL_API_KEY},
-            timeout=120.0
-        )
-    return response
+            timeout=timeout
+        ) as response:
+            if response.status_code != 200:
+                await response.aread()
+                yield f"data: {{\"error\": \"AI service error\", \"status\": {response.status_code}}}\n\n"
+                return
+            async for line in response.aiter_lines():
+                yield line
+    finally:
+        await client.aclose()
 
 
 async def post_clover_data_stream(body: dict):
