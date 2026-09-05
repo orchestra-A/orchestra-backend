@@ -160,12 +160,14 @@ async def get_project_by_id(project_id: str):
 
 
 @router.patch("/projects/{project_id}")
-async def update_project(project_id: str, request: Request):
+async def update_project(project_id: str, request: Request, user_id: Optional[str] = None):
     print(f"[PROJECT] Received request to update project {project_id}")
     try:
         body = await request.json()
     except Exception:
         body = {}
+    
+    req_user_id = user_id or body.get("user_id")
 
     db = SessionLocal()
     try:
@@ -185,6 +187,11 @@ async def update_project(project_id: str, request: Request):
         if "tech_stack" in body:
             p.tech_stack = body["tech_stack"]
         if "members" in body:
+            new_members = set(body["members"])
+            old_members = set(p.members or [])
+            if new_members - old_members:
+                if not req_user_id or req_user_id != p.created_by:
+                    return Response(content='{"error": "Only the project creator can add team members"}', media_type="application/json", status_code=403)
             p.members = body["members"]
         if "blueprint_summary" in body:
             p.blueprint_summary = body["blueprint_summary"]

@@ -211,6 +211,7 @@ async def get_users():
                 {
                     "user_id": u.id,
                     "username": u.username,
+                    "name": u.name,
                     "email": u.email,
                     "github_username": gh.platform_metadata.get("username") if gh and gh.platform_metadata else None,
                     "discord_username": dc.platform_metadata.get("username") if dc and dc.platform_metadata else None,
@@ -250,6 +251,7 @@ async def get_user_by_id(user_id: str):
         profile = {
             "user_id": u.id,
             "username": u.username,
+            "name": u.name,
             "email": u.email,
             "github_username": gh.platform_metadata.get("username") if gh and gh.platform_metadata else None,
             "discord_username": dc.platform_metadata.get("username") if dc and dc.platform_metadata else None,
@@ -282,7 +284,12 @@ async def update_user_put(user_id: str, payload: dict):
         
         data = payload
         if "username" in data:
-            user.username = data["username"]
+            new_username = data["username"]
+            if new_username != user.username:
+                existing = db.query(UserTable).filter_by(username=new_username).first()
+                if existing:
+                    return Response(content='{"error": "Username already taken"}', media_type="application/json", status_code=409)
+                user.username = new_username
         if "name" in data:
             user.name = data["name"]
         if "email" in data:
@@ -310,7 +317,12 @@ async def update_user_patch(user_id: str, payload: dict):
         
         data = payload
         if "username" in data:
-            user.username = data["username"]
+            new_username = data["username"]
+            if new_username != user.username:
+                existing = db.query(UserTable).filter_by(username=new_username).first()
+                if existing:
+                    return Response(content='{"error": "Username already taken"}', media_type="application/json", status_code=409)
+                user.username = new_username
         if "name" in data:
             user.name = data["name"]
         if "email" in data:
