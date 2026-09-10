@@ -71,24 +71,71 @@ async def proxy_blueprint(payload: BlueprintRequest, request: Request):
                             data = json.loads(content)
                             if data.get("done") and "project" in data:
                                 project_id = data["project"].get("id")
-                                if project_id and (tracked_repos or tracked_channels):
+                                if project_id:
                                     db = SessionLocal()
                                     try:
                                         p = db.query(ProjectTable).filter(ProjectTable.id == project_id).first()
                                         if p:
+                                            # Update tracked fields
                                             if tracked_repos:
                                                 p.tracked_repos = tracked_repos
                                                 import asyncio
                                                 from app.services.github_service import sync_project_webhooks
                                                 asyncio.create_task(sync_project_webhooks(project_id, tracked_repos, p.created_by))
+                                                data["project"]["tracked_repos"] = tracked_repos
                                             if tracked_channels:
                                                 p.tracked_channels = tracked_channels
+                                                data["project"]["tracked_channels"] = tracked_channels
+                                                
+                                            # Extract blueprint_summary from either data or data["project"]
+                                            blueprint_summary = data.get("blueprint_summary") or data["project"].get("blueprint_summary")
+                                            if blueprint_summary:
+                                                p.blueprint_summary = blueprint_summary
+                                            
+                                            # Update tech_stack if AI service refined it
+                                            tech_stack = data.get("tech_stack") or data["project"].get("tech_stack")
+                                            if tech_stack and isinstance(tech_stack, list):
+                                                p.tech_stack = tech_stack
+                                            
+                                            # Extract tasks from either data or data["project"]
+                                            tasks = data.get("tasks") or data["project"].get("tasks") or data.get("assigned_tasks") or data["project"].get("assigned_tasks")
+                                            if tasks and isinstance(tasks, list):
+                                                from models_sql import TaskTable
+                                                from datetime import datetime, timezone
+                                                
+                                                num = db.query(TaskTable).filter(TaskTable.project_id == project_id).count() + 1
+                                                clean_proj = project_id.replace("proj_", "").upper()[:3]
+                                                now_iso = datetime.now(timezone.utc).isoformat()
+                                                
+                                                for t_data in tasks:
+                                                    task_id = f"P{clean_proj}-T{num:03d}"
+                                                    num += 1
+                                                    
+                                                    new_db_task = TaskTable(
+                                                        id=task_id,
+                                                        title=t_data.get("title", "Untitled Task"),
+                                                        status="upcoming",
+                                                        track=t_data.get("track"),
+                                                        description=t_data.get("description"),
+                                                        priority=t_data.get("priority"),
+                                                        updated_at=now_iso,
+                                                        platform=t_data.get("platform"),
+                                                        assigned_to=t_data.get("assigned_to"),
+                                                        project_id=project_id,
+                                                        deadline=t_data.get("deadline"),
+                                                        created_at=now_iso,
+                                                        depends_on=t_data.get("depends_on") or t_data.get("dependencies", []),
+                                                        history=[]
+                                                    )
+                                                    db.add(new_db_task)
+                                                    # Inject generated ID back into task data
+                                                    t_data["id"] = task_id
+                                            
                                             db.commit()
-                                            data["project"]["tracked_repos"] = tracked_repos
-                                            data["project"]["tracked_channels"] = tracked_channels
-                                            print(f"[BLUEPRINT] ✅ Injected tracking fields for project {project_id}")
+                                            print(f"[BLUEPRINT] ✅ Injected tracking fields and saved tasks for project {project_id}")
                                     except Exception as e:
-                                        print(f"[BLUEPRINT] ❌ Error injecting tracking fields: {e}")
+                                        print(f"[BLUEPRINT] ❌ Error saving tasks and tracking fields: {e}")
+                                        db.rollback()
                                     finally:
                                         db.close()
                                 yield f"data: {json.dumps(data)}\n"
