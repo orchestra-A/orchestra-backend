@@ -94,14 +94,18 @@ async def create_new_task(request: Request, user_id: Optional[str] = None):
     project_id = body.get("project_id")
 
     if project_id:
-        db = SessionLocal()
-        try:
-            from models_sql import ProjectTable
-            p = db.query(ProjectTable).filter(ProjectTable.id == project_id).first()
-            if p and (not req_user_id or p.created_by != req_user_id):
-                return JSONResponse(status_code=403, content={"error": "Only the project creator can add tasks"})
-        finally:
-            db.close()
+        # Allow internal AI service to bypass ownership check
+        api_key = request.headers.get("x-api-key")
+        internal_key = os.getenv("INTERNAL_API_KEY")
+        if not (api_key and internal_key and api_key == internal_key):
+            db = SessionLocal()
+            try:
+                from models_sql import ProjectTable
+                p = db.query(ProjectTable).filter(ProjectTable.id == project_id).first()
+                if p and (not req_user_id or p.created_by != req_user_id):
+                    return JSONResponse(status_code=403, content={"error": "Only the project creator can add tasks"})
+            finally:
+                db.close()
 
     # Generate custom task ID format: P{project_id}-T{num}
     db = SessionLocal()
@@ -230,6 +234,7 @@ async def manually_update_task_status(task_id: str, request: TaskStatusUpdate):
     return JSONResponse(status_code=404, content={"error": "Task not found"})
 
 
+@router.patch("/tasks/{task_id}")
 @router.patch("/tasks/{task_id}/assign")
 async def manually_reassign_task(task_id: str, payload: TaskAssignRequest = Body(None)):
     if payload is None:
