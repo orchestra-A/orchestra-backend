@@ -30,3 +30,4 @@ test_httpx.py
 test_live_webhooks.py
 
 seed_tasks.py
+scratch/

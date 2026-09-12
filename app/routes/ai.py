@@ -4,8 +4,8 @@ from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse, StreamingResponse
 import httpx
 
-from app.schemas.ai import BlueprintRequest, CloverRequest
-from app.services.ai_service import get_team_data, post_blueprint_data_stream, post_clover_data_stream
+from app.schemas.ai import BlueprintRequest, CloverRequest, AddMemberRequest, AddTaskRequest
+from app.services.ai_service import get_team_data, post_blueprint_data_stream, post_clover_data_stream, post_add_member, post_add_task
 from database import SessionLocal
 from models_sql import ProjectTable
 
@@ -188,3 +188,59 @@ async def proxy_clover(payload: CloverRequest, request: Request):
         post_clover_data_stream(body),
         media_type="text/event-stream"
     )
+
+
+@router.post("/add_member")
+async def proxy_add_member(payload: AddMemberRequest, request: Request):
+    internal_api_key = os.getenv("INTERNAL_API_KEY", "")
+    if not internal_api_key:
+        print("[AI MEMBER] ❌ Missing INTERNAL_API_KEY")
+        sys.stdout.flush()
+        return JSONResponse(status_code=500, content={"error": "AI service not configured"})
+        
+    print(f"[AI MEMBER] 🔄 Forwarding add member request for {payload.name} to AI service")
+    sys.stdout.flush()
+    
+    try:
+        response = await post_add_member(payload.model_dump())
+        if response.status_code != 200:
+            print(f"[AI MEMBER] ❌ AI service returned non-200: {response.status_code}")
+            sys.stdout.flush()
+            return JSONResponse(status_code=502, content={"error": "AI service error", "detail": response.text})
+            
+        print("[AI MEMBER] ✅ Member added successfully via AI service")
+        sys.stdout.flush()
+        return JSONResponse(status_code=200, content=response.json())
+        
+    except httpx.RequestError as e:
+        print(f"[AI MEMBER] ❌ Network error or timeout: {str(e)}")
+        sys.stdout.flush()
+        return JSONResponse(status_code=504, content={"error": "AI service timeout or unreachable"})
+
+
+@router.post("/add_tasks")
+async def proxy_add_task(payload: AddTaskRequest, request: Request):
+    internal_api_key = os.getenv("INTERNAL_API_KEY", "")
+    if not internal_api_key:
+        print("[AI TASK] ❌ Missing INTERNAL_API_KEY")
+        sys.stdout.flush()
+        return JSONResponse(status_code=500, content={"error": "AI service not configured"})
+        
+    print(f"[AI TASK] 🔄 Forwarding add task request for '{payload.title}' to AI service")
+    sys.stdout.flush()
+    
+    try:
+        response = await post_add_task(payload.model_dump())
+        if response.status_code != 200:
+            print(f"[AI TASK] ❌ AI service returned non-200: {response.status_code}")
+            sys.stdout.flush()
+            return JSONResponse(status_code=502, content={"error": "AI service error", "detail": response.text})
+            
+        print("[AI TASK] ✅ Task added successfully via AI service")
+        sys.stdout.flush()
+        return JSONResponse(status_code=200, content=response.json())
+        
+    except httpx.RequestError as e:
+        print(f"[AI TASK] ❌ Network error or timeout: {str(e)}")
+        sys.stdout.flush()
+        return JSONResponse(status_code=504, content={"error": "AI service timeout or unreachable"})
