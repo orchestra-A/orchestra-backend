@@ -10,6 +10,17 @@ class BlueprintRequest(BaseModel):
     tracked_repos: List[str] = []
     tracked_channels: List[str] = []
 
+class AddMemberRequest(BaseModel):
+    name: str
+    skills: List[str] = []
+    project_id: Optional[str] = None
+
+class AddTaskRequest(BaseModel):
+    project_id: str
+    title: str
+    description: str = ""
+    track: Optional[str] = None
+
     model_config = {
         "json_schema_extra": {
             "examples": [

@@ -12,6 +12,27 @@ async def get_team_data():
     return response
 
 
+async def post_add_member(body: dict):
+    async with httpx.AsyncClient() as client:
+        response = await client.post(
+            f"{AI_SERVICE_URL}/members",
+            json=body,
+            headers={"x-api-key": INTERNAL_API_KEY},
+            timeout=30.0
+        )
+    return response
+
+
+async def post_add_task(body: dict):
+    async with httpx.AsyncClient() as client:
+        response = await client.post(
+            f"{AI_SERVICE_URL}/tasks",
+            json=body,
+            headers={"x-api-key": INTERNAL_API_KEY},
+            timeout=30.0
+        )
+    return response
+
 async def post_blueprint_data_stream(body: dict):
     client = httpx.AsyncClient()
     try:
