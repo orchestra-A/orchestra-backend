@@ -12,13 +12,13 @@ from models_sql import TaskTable, UserTable
 from sqlalchemy.orm.attributes import flag_modified
 
 from app.utils.websocket_manager import manager
-from app.schemas.task import TaskStatusUpdate, TaskAssignRequest, TaskResponse, GetTasksResponse
+from app.schemas.task import TaskStatusUpdate, TaskAssignRequest
 from app.services.task_service import update_task_status
 
 router = APIRouter()
 
 
-@router.get("/tasks", response_model=GetTasksResponse)
+@router.get("/tasks")
 async def get_tasks(project_id: Optional[str] = None):
     db = SessionLocal()
     try:
@@ -51,12 +51,13 @@ async def get_tasks(project_id: Optional[str] = None):
                 }
             )
         result = {"total": len(tasks), "tasks": tasks}
-        return result
+        formatted_json = json.dumps(result, indent=4)
+        return Response(content=formatted_json, media_type="application/json")
     finally:
         db.close()
 
 
-@router.get("/tasks/{task_id}", response_model=TaskResponse)
+@router.get("/tasks/{task_id}")
 async def get_single_task(task_id: str):
     db = SessionLocal()
     try:
