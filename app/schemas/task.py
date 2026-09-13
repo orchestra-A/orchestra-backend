@@ -25,6 +25,7 @@ class TaskCreateRequest(BaseModel):
     deadline: Optional[str] = None
     depends_on: Optional[list] = None
     dependencies: Optional[list] = None
+    points: Optional[int] = None
 
 class TaskResponse(BaseModel):
     id: str

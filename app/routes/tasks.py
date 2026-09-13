@@ -135,6 +135,7 @@ async def create_new_task(payload: TaskCreateRequest, request: Request, user_id:
     assigned_to = body.get("assigned_to")
     deadline = body.get("deadline")
     depends_on = body.get("depends_on") or body.get("dependencies", [])
+    points = body.get("points", 0)
     
     created_at = datetime.now(timezone.utc).isoformat()
     if not updated_at:
@@ -154,6 +155,7 @@ async def create_new_task(payload: TaskCreateRequest, request: Request, user_id:
         "deadline": deadline,
         "depends_on": depends_on,
         "created_at": created_at,
+        "points": points,
     }
 
     # Save to SQL database
@@ -173,9 +175,10 @@ async def create_new_task(payload: TaskCreateRequest, request: Request, user_id:
                 assigned_to=assigned_to,
                 project_id=project_id,
                 deadline=deadline,
-                created_at=created_at,
                 depends_on=depends_on,
-                history=[]
+                history=[],
+                created_at=created_at,
+                points=points
             )
             db.add(new_db_task)
             db.commit()
