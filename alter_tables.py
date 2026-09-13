@@ -37,6 +37,7 @@ def run_migrations():
             cur.execute("ALTER TABLE tasks ADD COLUMN IF NOT EXISTS updated_at VARCHAR;")
             cur.execute("ALTER TABLE tasks ADD COLUMN IF NOT EXISTS platform VARCHAR;")
             cur.execute("ALTER TABLE tasks ADD COLUMN IF NOT EXISTS deadline VARCHAR;")
+            cur.execute("ALTER TABLE tasks ADD COLUMN IF NOT EXISTS points INTEGER DEFAULT 0;")
             print("Added new columns to tasks")
             
             cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS name VARCHAR;")
