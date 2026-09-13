@@ -198,7 +198,7 @@ async def proxy_add_member(payload: AddMemberRequest, request: Request):
         sys.stdout.flush()
         return JSONResponse(status_code=500, content={"error": "AI service not configured"})
         
-    print(f"[AI MEMBER] 🔄 Forwarding add member request for {payload.name} to AI service")
+    print(f"[AI MEMBER] 🔄 Forwarding add member request for {payload.username} to AI service")
     sys.stdout.flush()
     
     try:

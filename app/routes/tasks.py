@@ -47,6 +47,7 @@ async def get_tasks(project_id: Optional[str] = None):
                     "branch": t.branch,
                     "deadline": t.deadline,
                     "history": t.history,
+                    "points": t.points,
                 }
             )
         result = {"total": len(tasks), "tasks": tasks}
@@ -80,6 +81,7 @@ async def get_single_task(task_id: str):
                 "branch": t.branch,
                 "deadline": t.deadline,
                 "history": t.history,
+                "points": t.points,
             }
         return JSONResponse(status_code=404, content={"error": "Task not found"})
     finally:
@@ -276,6 +278,10 @@ async def manually_reassign_task(task_id: str, payload: TaskAssignRequest = Body
 
         if "track" in provided_fields:
             task.track = payload.track
+            changed = True
+
+        if "points" in provided_fields:
+            task.points = payload.points
             changed = True
 
         if changed:

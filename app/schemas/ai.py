@@ -11,7 +11,7 @@ class BlueprintRequest(BaseModel):
     tracked_channels: List[str] = []
 
 class AddMemberRequest(BaseModel):
-    name: str
+    username: str
     skills: List[str] = []
     project_id: Optional[str] = None
 
@@ -20,6 +20,7 @@ class AddTaskRequest(BaseModel):
     title: str
     description: str = ""
     track: Optional[str] = None
+    assigned_to: Optional[str] = None
 
     model_config = {
         "json_schema_extra": {

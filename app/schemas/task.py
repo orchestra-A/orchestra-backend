@@ -9,4 +9,5 @@ class TaskAssignRequest(BaseModel):
     description: Optional[str] = None
     assigned_to: Optional[str] = None
     track: Optional[str] = None
+    points: Optional[int] = None
 

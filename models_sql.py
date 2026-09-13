@@ -37,6 +37,7 @@ class TaskTable(Base):
     pr_number = Column(Integer, nullable=True)
     branch = Column(String, nullable=True)
     deadline = Column(String, nullable=True)
+    points = Column(Integer, default=0, nullable=True)
 
     # Store simple lists as JSON inside PostgreSQL
     depends_on = Column(JSON, default=list)
