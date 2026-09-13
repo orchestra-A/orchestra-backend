@@ -26,11 +26,11 @@ class AddTaskRequest(BaseModel):
         "json_schema_extra": {
             "examples": [
                 {
-                    "name": "Orchestra Dashboard",
-                    "description": "A frontend dashboard for managing projects.",
-                    "tech_stack": ["React", "TypeScript", "Tailwind CSS"],
-                    "created_by": "usr_789012",
-                    "members": ["usr_123456"]
+                    "project_id": "proj_12345678",
+                    "title": "Set up database schema",
+                    "description": "Define the SQL models for users and tasks.",
+                    "track": "backend",
+                    "assigned_to": "usr_789012"
                 }
             ]
         }
