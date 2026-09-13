@@ -5,6 +5,7 @@ from typing import Optional
 from fastapi import APIRouter, Request, Response
 from database import SessionLocal
 from models_sql import ProjectTable, TaskTable
+from sqlalchemy.orm.attributes import flag_modified
 from app.services.ai_service import delete_ai_project
 from app.services.github_service import sync_project_webhooks
 
@@ -186,6 +187,7 @@ async def update_project(project_id: str, request: Request, user_id: Optional[st
             p.description = body["description"]
         if "tech_stack" in body:
             p.tech_stack = body["tech_stack"]
+            flag_modified(p, "tech_stack")
         if "members" in body:
             new_members = set(body["members"])
             old_members = set(p.members or [])
@@ -193,15 +195,18 @@ async def update_project(project_id: str, request: Request, user_id: Optional[st
                 if not req_user_id or req_user_id != p.created_by:
                     return Response(content='{"error": "Only the project creator can add team members"}', media_type="application/json", status_code=403)
             p.members = body["members"]
+            flag_modified(p, "members")
         if "blueprint_summary" in body:
             p.blueprint_summary = body["blueprint_summary"]
         if "tracked_repos" in body:
             p.tracked_repos = body["tracked_repos"]
+            flag_modified(p, "tracked_repos")
             import asyncio
             asyncio.create_task(sync_project_webhooks(project_id, body["tracked_repos"], p.created_by))
             
         if "tracked_channels" in body:
             p.tracked_channels = body["tracked_channels"]
+            flag_modified(p, "tracked_channels")
         if "is_archived" in body:
             p.is_archived = body["is_archived"]
         if "github_repo_url" in body:
