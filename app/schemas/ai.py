@@ -19,8 +19,8 @@ class AddTaskRequest(BaseModel):
     project_id: str
     title: str
     description: str = ""
-    track: Optional[str] = None
-    assigned_to: Optional[str] = None
+    track: str
+    assigned_to: str
 
     model_config = {
         "json_schema_extra": {
