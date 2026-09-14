@@ -125,7 +125,8 @@ async def discord_callback(code: Optional[str] = None, state: Optional[str] = No
         discord_username=discord_username,
         discord_access_token=access_token,
         email=email,
-        existing_user_id=existing_user_id
+        existing_user_id=existing_user_id,
+        skip_email_match=True if not existing_user_id else False
     )
     user_id = user_profile.get("user_id") if user_profile else ""
     is_new_user = user_profile.get("is_new_user", True) if user_profile else True

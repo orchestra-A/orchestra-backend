@@ -116,14 +116,15 @@ async def google_callback(code: Optional[str] = None, state: Optional[str] = Non
     sys.stdout.flush()
 
     # Step 3 — Get existing user_id from state if linking accounts
-    # Step 4 — Save to unified user profile (links to any existing GitHub/Discord profile)
+    # Step 4 — Save to unified user profile (links to any existing profile if existing_user_id was provided)
     user_profile = save_unified_user_profile(
         email=email,
         existing_user_id=existing_user_id,
         google_id=google_id,
         google_name=name,
         google_picture=picture,
-        google_access_token=access_token
+        google_access_token=access_token,
+        skip_email_match=True if not existing_user_id else False
     )
 
     user_id = user_profile.get("user_id") if user_profile else ""

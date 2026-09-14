@@ -27,6 +27,7 @@ def save_unified_user_profile(
     google_name: Optional[str] = None,
     google_picture: Optional[str] = None,
     google_access_token: Optional[str] = None,
+    skip_email_match: bool = False,
 ) -> dict:
     # Creates or updates a unified user profile in the database using the dynamic PlatformIntegration table.
     from database import SessionLocal
@@ -45,10 +46,11 @@ def save_unified_user_profile(
             user = None
             if existing_user_id:
                 user = db.query(UserTable).filter_by(id=existing_user_id).first()
-            if not user and email:
+            if not user and email and not skip_email_match:
                 user = db.query(UserTable).filter(UserTable.email.ilike(email.strip())).first()
             if not user and github_username:
-                user = db.query(UserTable).filter(UserTable.username.ilike(github_username.strip())).first()
+                if not skip_email_match:
+                    user = db.query(UserTable).filter(UserTable.username.ilike(github_username.strip())).first()
                 if not user:
                     # Search by GitHub integration metadata
                     pi = db.query(PlatformIntegrationTable).filter_by(platform_name="github").all()
@@ -59,7 +61,8 @@ def save_unified_user_profile(
                             if user:
                                 break
             if not user and discord_username:
-                user = db.query(UserTable).filter(UserTable.username.ilike(discord_username.strip())).first()
+                if not skip_email_match:
+                    user = db.query(UserTable).filter(UserTable.username.ilike(discord_username.strip())).first()
                 if not user:
                     # Search by Discord integration metadata
                     pi = db.query(PlatformIntegrationTable).filter_by(platform_name="discord").all()
