@@ -79,7 +79,11 @@ def update_task_status(task_id: str, new_status: str) -> bool:
         sys.stdout.flush()
 
         # Sync to Neo4j Graph DB
-        sync_task_status_to_neo4j(task_id, new_status)
+        try:
+            loop = asyncio.get_running_loop()
+            loop.create_task(sync_task_status_to_neo4j(task_id, new_status))
+        except RuntimeError:
+            asyncio.run(sync_task_status_to_neo4j(task_id, new_status))
 
         # Broadcasts task status change to all connected browsers for live UI updates.
         try:
