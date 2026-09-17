@@ -221,6 +221,8 @@ def normalize_status_for_neo4j(status: str) -> str:
         "IN_PROGRESS": "in_progress",
         "BLOCKED": "blocked",
         "UPCOMING": "upcoming",
+        "halted": "blocked",
+        "HALTED": "blocked",
     }
     return mapping.get(status, status.lower())
 

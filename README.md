@@ -228,11 +228,15 @@ The task state machine enforces valid workflow transitions:
 |------|----|---------|
 | PENDING | IN_PROGRESS | Branch push with task ID |
 | PENDING | BLOCKED | Manual or dependency issue |
+| PENDING | HALTED | Deadline passed |
 | IN_PROGRESS | COMPLETED | PR merged |
 | IN_PROGRESS | BLOCKED | PR closed without merge |
 | IN_PROGRESS | PENDING | Reset/rollback |
+| IN_PROGRESS | HALTED | Deadline passed |
 | BLOCKED | PENDING | Issue resolved |
 | BLOCKED | IN_PROGRESS | Retry started |
+| HALTED | PENDING | Manual resume |
+| HALTED | IN_PROGRESS | Manual resume |
 
 ---
 
@@ -252,6 +256,10 @@ The scheduler runs three recurring tasks:
 3. **Stale Task Check** (Every 60 minutes)
    - Identifies tasks stuck in IN_PROGRESS > 24 hours
    - Broadcasts warnings for blocked work
+
+4. **Deadline Check** (Every 15 minutes)
+   - Checks tasks with assigned deadlines
+   - Transitions past-deadline tasks to `HALTED` state
 
 ---
 

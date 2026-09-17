@@ -1,5 +1,5 @@
-import requests
-import time
+import httpx
+import asyncio
 import sys
 from app.core.config import GRAPH_API_URL, INTERNAL_API_KEY
 
@@ -18,12 +18,14 @@ def normalize_status_for_neo4j(status: str) -> str:
         "IN_PROGRESS": "in_progress",
         "BLOCKED": "blocked",
         "UPCOMING": "upcoming",
+        "halted": "blocked",
+        "HALTED": "blocked",
     }
     return mapping.get(status, status.lower())
 
 
-def sync_task_status_to_neo4j(task_id: str, status: str) -> bool:
-    # Syncs task status to Neo4j for Clover AI; uses synchronous requests to match state_machine.py's sync call path.
+async def sync_task_status_to_neo4j(task_id: str, status: str) -> bool:
+    # Syncs task status to Neo4j for Clover AI; uses async httpx to avoid blocking the event loop.
     if not GRAPH_API_URL or not INTERNAL_API_KEY:
         print("[GRAPH SYNC] ⚠️ Missing GRAPH_API_URL or INTERNAL_API_KEY — skipping sync")
         sys.stdout.flush()
@@ -37,12 +39,13 @@ def sync_task_status_to_neo4j(task_id: str, status: str) -> bool:
 
     for attempt in range(max_retries + 1):
         try:
-            response = requests.patch(
-                url,
-                json={"status": normalized},
-                headers={"x-api-key": INTERNAL_API_KEY},
-                timeout=10
-            )
+            async with httpx.AsyncClient() as client:
+                response = await client.patch(
+                    url,
+                    json={"status": normalized},
+                    headers={"x-api-key": INTERNAL_API_KEY},
+                    timeout=10.0
+                )
 
             if response.status_code == 200:
                 print(f"[GRAPH SYNC] ✅ Neo4j updated: {task_id} → {normalized}")
@@ -59,14 +62,14 @@ def sync_task_status_to_neo4j(task_id: str, status: str) -> bool:
                 sys.stdout.flush()
                 return False
 
-        except requests.exceptions.RequestException as e:
+        except httpx.RequestError as e:
             print(f"[GRAPH SYNC] ⚠️ Network error (Attempt {attempt + 1}/{max_retries + 1}): {e}")
 
         if attempt < max_retries:
             delay = base_delay * (2 ** attempt)
             print(f"[GRAPH SYNC] ⏳ Retrying in {delay}s...")
             sys.stdout.flush()
-            time.sleep(delay)
+            await asyncio.sleep(delay)
 
     print(f"[GRAPH SYNC] ❌ Neo4j sync completely failed after {max_retries + 1} attempts for {task_id}.")
     sys.stdout.flush()

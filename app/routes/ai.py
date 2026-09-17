@@ -210,6 +210,45 @@ async def proxy_add_member(payload: AddMemberRequest, request: Request):
             
         print("[AI MEMBER] ✅ Member added successfully via AI service")
         sys.stdout.flush()
+
+        db = SessionLocal()
+        try:
+            from models_sql import UserTable
+            import uuid
+            from datetime import datetime, timezone
+            
+            user = db.query(UserTable).filter_by(username=payload.username).first()
+            if not user:
+                now_iso = datetime.now(timezone.utc).isoformat()
+                user = UserTable(
+                    id=f"usr_{uuid.uuid4().hex[:8]}",
+                    username=payload.username,
+                    created_at=now_iso,
+                    updated_at=now_iso,
+                    skills=payload.skills
+                )
+                db.add(user)
+                db.commit()
+                db.refresh(user)
+                
+            if payload.project_id:
+                project = db.query(ProjectTable).filter_by(id=payload.project_id).first()
+                if project:
+                    if not project.members:
+                        project.members = []
+                    if user.id not in project.members:
+                        project.members.append(user.id)
+                        from sqlalchemy.orm.attributes import flag_modified
+                        flag_modified(project, "members")
+                        db.commit()
+                        print(f"[AI MEMBER] ✅ Added {user.id} to project {project.id} members")
+                        sys.stdout.flush()
+        except Exception as e:
+            print(f"[AI MEMBER] ❌ Database error: {e}")
+            sys.stdout.flush()
+        finally:
+            db.close()
+
         return JSONResponse(status_code=200, content=response.json())
         
     except httpx.RequestError as e:

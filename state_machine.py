@@ -200,12 +200,12 @@ def save_tasks(tasks: dict[str, Task]) -> None:
             if old_state != new_state:
                 try:
                     from app.services.graph_service import sync_task_status_to_neo4j
-                    import threading
-                    threading.Thread(
-                        target=sync_task_status_to_neo4j,
-                        args=(t_id, new_state),
-                        daemon=True
-                    ).start()
+                    import asyncio
+                    try:
+                        loop = asyncio.get_running_loop()
+                        loop.create_task(sync_task_status_to_neo4j(t_id, new_state))
+                    except RuntimeError:
+                        asyncio.run(sync_task_status_to_neo4j(t_id, new_state))
                 except Exception as e:
                     print(f"[STATE MACHINE] Error importing/calling sync_task_status_to_neo4j: {e}")
         db.commit()
