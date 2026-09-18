@@ -4,10 +4,13 @@ from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse, StreamingResponse
 import httpx
 
-from app.schemas.ai import BlueprintRequest, CloverRequest, AddMemberRequest, AddTaskRequest
+import uuid
+from datetime import datetime, timezone
+from app.schemas.ai import BlueprintRequest, CloverRequest, AddMemberRequest, AddTaskRequest, RemoveMemberRequest
 from app.services.ai_service import get_team_data, post_blueprint_data_stream, post_clover_data_stream, post_add_member, post_add_task
 from database import SessionLocal
-from models_sql import ProjectTable
+from models_sql import ProjectTable, UserTable
+from sqlalchemy.orm.attributes import flag_modified
 
 router = APIRouter()
 
@@ -192,31 +195,18 @@ async def proxy_clover(payload: CloverRequest, request: Request):
 
 @router.post("/add_member")
 async def proxy_add_member(payload: AddMemberRequest, request: Request):
-    internal_api_key = os.getenv("INTERNAL_API_KEY", "")
-    if not internal_api_key:
-        print("[AI MEMBER] ❌ Missing INTERNAL_API_KEY")
-        sys.stdout.flush()
-        return JSONResponse(status_code=500, content={"error": "AI service not configured"})
-        
-    print(f"[AI MEMBER] 🔄 Forwarding add member request for {payload.username} to AI service")
-    sys.stdout.flush()
-    
-    try:
-        response = await post_add_member(payload.model_dump())
-        if response.status_code != 200:
-            print(f"[AI MEMBER] ❌ AI service returned non-200: {response.status_code}")
-            sys.stdout.flush()
-            return JSONResponse(status_code=502, content={"error": "AI service error", "detail": response.text})
-            
-        print("[AI MEMBER] ✅ Member added successfully via AI service")
-        sys.stdout.flush()
+    if not payload.project_id:
+        return JSONResponse(status_code=400, content={"error": "project_id is required"})
 
-        db = SessionLocal()
-        try:
-            from models_sql import UserTable
-            import uuid
-            from datetime import datetime, timezone
-            
+    db = SessionLocal()
+    try:
+        project = db.query(ProjectTable).filter(ProjectTable.id == payload.project_id).first()
+        if not project:
+            return JSONResponse(status_code=404, content={"error": "Project not found"})
+
+        # Determine user_id to add
+        user_id = payload.user_id
+        if not user_id and payload.username:
             user = db.query(UserTable).filter_by(username=payload.username).first()
             if not user:
                 now_iso = datetime.now(timezone.utc).isoformat()
@@ -230,31 +220,114 @@ async def proxy_add_member(payload: AddMemberRequest, request: Request):
                 db.add(user)
                 db.commit()
                 db.refresh(user)
-                
-            if payload.project_id:
-                project = db.query(ProjectTable).filter_by(id=payload.project_id).first()
-                if project:
-                    if not project.members:
-                        project.members = []
-                    if user.id not in project.members:
-                        project.members.append(user.id)
-                        from sqlalchemy.orm.attributes import flag_modified
-                        flag_modified(project, "members")
-                        db.commit()
-                        print(f"[AI MEMBER] ✅ Added {user.id} to project {project.id} members")
-                        sys.stdout.flush()
-        except Exception as e:
-            print(f"[AI MEMBER] ❌ Database error: {e}")
-            sys.stdout.flush()
-        finally:
-            db.close()
+            user_id = user.id
 
-        return JSONResponse(status_code=200, content=response.json())
-        
-    except httpx.RequestError as e:
-        print(f"[AI MEMBER] ❌ Network error or timeout: {str(e)}")
+        if not user_id:
+            return JSONResponse(status_code=400, content={"error": "user_id or username is required"})
+
+        # Get current members list (JSON array of user_id strings)
+        current_members = list(project.members) if project.members else []
+
+        # If user_id is already in members list
+        if user_id in current_members:
+            return JSONResponse(
+                status_code=200,
+                content={"message": "User is already a member", "project_id": payload.project_id}
+            )
+
+        # Append user_id to members array
+        current_members.append(user_id)
+        project.members = current_members
+        flag_modified(project, "members")
+
+        # Update updated_at to current UTC time
+        project.updated_at = datetime.now(timezone.utc).isoformat()
+        db.commit()
+        db.refresh(project)
+
+        # Forward to AI service if configured
+        internal_api_key = os.getenv("INTERNAL_API_KEY", "")
+        if internal_api_key:
+            try:
+                await post_add_member(payload.model_dump())
+            except Exception as e:
+                print(f"[AI MEMBER] ⚠️ AI service sync warning: {e}")
+                sys.stdout.flush()
+
+        project_dict = {
+            "id": project.id,
+            "name": project.name,
+            "description": project.description,
+            "created_by": project.created_by,
+            "tech_stack": project.tech_stack,
+            "members": project.members,
+            "created_at": project.created_at,
+            "updated_at": project.updated_at,
+            "blueprint_summary": project.blueprint_summary,
+            "tracked_repos": project.tracked_repos,
+            "tracked_channels": project.tracked_channels,
+            "is_archived": project.is_archived,
+            "github_repo_url": project.github_repo_url,
+        }
+        return JSONResponse(status_code=200, content=project_dict)
+    except Exception as e:
+        print(f"[MEMBER] ❌ Error adding member: {e}")
         sys.stdout.flush()
-        return JSONResponse(status_code=504, content={"error": "AI service timeout or unreachable"})
+        db.rollback()
+        return JSONResponse(status_code=500, content={"error": str(e)})
+    finally:
+        db.close()
+
+
+@router.post("/remove_member")
+async def remove_member(payload: RemoveMemberRequest, request: Request):
+    if not payload.project_id:
+        return JSONResponse(status_code=400, content={"error": "project_id is required"})
+
+    db = SessionLocal()
+    try:
+        project = db.query(ProjectTable).filter(ProjectTable.id == payload.project_id).first()
+        if not project:
+            return JSONResponse(status_code=404, content={"error": "Project not found"})
+
+        current_members = list(project.members) if project.members else []
+        if payload.user_id not in current_members:
+            return JSONResponse(
+                status_code=200,
+                content={"message": "User is not a member", "project_id": payload.project_id}
+            )
+
+        current_members = [m for m in current_members if m != payload.user_id]
+        project.members = current_members
+        flag_modified(project, "members")
+        project.updated_at = datetime.now(timezone.utc).isoformat()
+        db.commit()
+        db.refresh(project)
+
+        project_dict = {
+            "id": project.id,
+            "name": project.name,
+            "description": project.description,
+            "created_by": project.created_by,
+            "tech_stack": project.tech_stack,
+            "members": project.members,
+            "created_at": project.created_at,
+            "updated_at": project.updated_at,
+            "blueprint_summary": project.blueprint_summary,
+            "tracked_repos": project.tracked_repos,
+            "tracked_channels": project.tracked_channels,
+            "is_archived": project.is_archived,
+            "github_repo_url": project.github_repo_url,
+        }
+        return JSONResponse(status_code=200, content=project_dict)
+    except Exception as e:
+        print(f"[MEMBER] ❌ Error removing member: {e}")
+        sys.stdout.flush()
+        db.rollback()
+        return JSONResponse(status_code=500, content={"error": str(e)})
+    finally:
+        db.close()
+
 
 
 @router.post("/add_tasks")

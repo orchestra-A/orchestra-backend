@@ -20,6 +20,7 @@ def normalize_status_for_neo4j(status: str) -> str:
         "UPCOMING": "upcoming",
         "halted": "blocked",
         "HALTED": "blocked",
+        "Halted": "blocked",
     }
     return mapping.get(status, status.lower())
 

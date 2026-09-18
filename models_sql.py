@@ -83,7 +83,7 @@ class ProjectTable(Base):
     tech_stack = Column(JSON, nullable=True)
 
     # List of user IDs who are members of the project
-    members = Column(JSON, nullable=True)
+    members = Column(JSON, nullable=True, default=list)
 
     # ISO 8601 timestamp of when the project was created
     created_at = Column(String, nullable=False)

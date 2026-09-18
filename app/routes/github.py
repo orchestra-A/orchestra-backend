@@ -25,22 +25,48 @@ router = APIRouter()
 @router.post("/webhook/github")
 async def receive_github(request: Request):
     github_event = request.headers.get("X-GitHub-Event", "unknown")
+    raw_body = await request.body()
+    github_signature = request.headers.get("X-Hub-Signature-256", "")
 
-    # ── HANDLE PING FIRST — before any verification ──
-    # Ping is just GitHub checking the URL works.
-    # No signature needed, just return 200 immediately.
+    # ── SIGNATURE VERIFICATION ─────────────────────────────────
+    # Step 1: Read GITHUB_WEBHOOK_SECRET_KEY from environment
+    webhook_secret = os.getenv("GITHUB_WEBHOOK_SECRET_KEY", "") or GITHUB_WEBHOOK_SECRET_KEY or ""
+
+    # Step 2: If GITHUB_WEBHOOK_SECRET_KEY is set AND is not "default_secret" AND is not empty
+    if webhook_secret and webhook_secret != "default_secret" and webhook_secret.strip() != "":
+        if not github_signature:
+            print("[GITHUB] ❌ Rejected — missing signature header")
+            sys.stdout.flush()
+            return JSONResponse(
+                status_code=401,
+                content={"error": "Missing signature header. Request rejected."}
+            )
+
+        expected_signature = (
+            "sha256="
+            + hmac.new(webhook_secret.encode("utf-8"), raw_body, hashlib.sha256).hexdigest()
+        )
+        if not hmac.compare_digest(github_signature, expected_signature):
+            print("[GITHUB] ❌ Rejected — invalid signature")
+            sys.stdout.flush()
+            return JSONResponse(
+                status_code=401,
+                content={"error": "Invalid signature. Request rejected."}
+            )
+
+        print("[GITHUB] ✅ Signature verified")
+        sys.stdout.flush()
+    else:
+        # Step 3: If GITHUB_WEBHOOK_SECRET_KEY is NOT set or is "default_secret"
+        print("[GITHUB] ⚠️ WARNING — No webhook secret configured.\nAccepting request without verification.\nSet GITHUB_WEBHOOK_SECRET_KEY in environment.")
+        sys.stdout.flush()
+    # ── END SIGNATURE VERIFICATION ──────────────────────────────
+
+    # Handle ping event
     if github_event == "ping":
         print("[GITHUB] ✅ Ping received — webhook registered successfully!")
         sys.stdout.flush()
         return {"received": True, "message": "Ping acknowledged"}
-
-    # ── SIGNATURE VERIFICATION ─────────────────────────────────
-    # Read raw bytes first — needed for signature check
-    # We must read raw_body BEFORE parsing as JSON
-    raw_body = await request.body()
-
-    # Get the signature GitHub sent in the header
-    github_signature = request.headers.get("X-Hub-Signature-256", "")
 
     # Parse payload
     try:
@@ -54,47 +80,6 @@ async def receive_github(request: Request):
         or payload.get("pusher", {}).get("name")
         or "unknown"
     )
-
-    # Look up this user's unique webhook secret
-    user_secret = None
-    from database import SessionLocal
-    from models_sql import PlatformIntegrationTable
-
-    db = SessionLocal()
-    try:
-        integrations = db.query(PlatformIntegrationTable).filter_by(platform_name="github").all()
-        for pi in integrations:
-            meta = pi.platform_metadata or {}
-            if meta.get("username") == sender:
-                user_secret = generate_user_webhook_secret(sender)
-                break
-    finally:
-        db.close()
-
-    # Enforce signature verification only if:
-    # 1. A webhook secret is configured
-    # 2. AND we have a registered user secret to verify against
-    # If no user is registered yet (e.g. org-level webhooks),
-    # we skip verification and trust the payload.
-    if GITHUB_WEBHOOK_SECRET_KEY and GITHUB_WEBHOOK_SECRET_KEY != "default_secret" and user_secret:
-        if github_signature:
-            expected_signature = (
-                "sha256="
-                + hmac.new(user_secret.encode(), raw_body, hashlib.sha256).hexdigest()
-            )
-            if not hmac.compare_digest(github_signature, expected_signature):
-                print(f"[GITHUB] ❌ Signature verification FAILED for {sender}")
-                sys.stdout.flush()
-                return JSONResponse(status_code=401, content={"error": "Invalid signature"})
-            print(f"[GITHUB] ✅ Signature verified for {sender}")
-            sys.stdout.flush()
-        else:
-            print(f"[GITHUB] ⚠️ No signature header — skipping verification for {sender}")
-            sys.stdout.flush()
-    else:
-        print(f"[GITHUB] ℹ️ No user secret found for {sender} — accepting without verification")
-        sys.stdout.flush()
-    # ── END SIGNATURE VERIFICATION ──────────────────────────────
 
     from app.services.event_service import log_webhook_payload
     log_webhook_payload("GITHUB", payload)

@@ -11,9 +11,14 @@ class BlueprintRequest(BaseModel):
     tracked_channels: List[str] = []
 
 class AddMemberRequest(BaseModel):
-    username: str
+    username: Optional[str] = None
+    user_id: Optional[str] = None
     skills: List[str] = []
     project_id: Optional[str] = None
+
+class RemoveMemberRequest(BaseModel):
+    project_id: str
+    user_id: str
 
 class AddTaskRequest(BaseModel):
     project_id: str
