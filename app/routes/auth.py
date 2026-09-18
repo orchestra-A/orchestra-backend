@@ -352,12 +352,13 @@ async def delete_user(user_id: str):
         # Archive projects created by the user
         db.query(ProjectTable).filter_by(created_by=user_id).update({"is_archived": True})
         
-        # Update project members (replace user_id with None/null)
+        # Update project members (remove deleted user_id)
+        from sqlalchemy.orm.attributes import flag_modified
         projects = db.query(ProjectTable).all()
         for p in projects:
             if p.members and user_id in p.members:
-                p.members = [None if m == user_id else m for m in p.members]
-                db.add(p)
+                p.members = [m for m in p.members if m and m != user_id]
+                flag_modified(p, "members")
                 
         # Nullify tasks and events linked to the user's username
         if user.username:

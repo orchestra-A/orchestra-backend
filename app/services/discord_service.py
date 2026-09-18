@@ -24,12 +24,16 @@ async def on_ready():
         print(f"[DISCORD BOT] - {guild.name} (id: {guild.id})")
     sys.stdout.flush()
 
-    from app.services.standup_service import standup_scheduler
+    try:
+        from app.services.standup_service import standup_scheduler
 
-    # Start the standup scheduler loop if not already running
-    if not standup_scheduler.is_running():
-        standup_scheduler.start()
-        print("[DISCORD BOT] ⏰ Daily Standup Scheduler started (9:00 AM)")
+        # Start the standup scheduler loop if not already running
+        if not standup_scheduler.is_running():
+            standup_scheduler.start()
+            print("[DISCORD BOT] ⏰ Daily Standup Scheduler started (9:00 AM)")
+            sys.stdout.flush()
+    except Exception as e:
+        print(f"[DISCORD BOT] ⚠️ Standup scheduler init warning: {e}")
         sys.stdout.flush()
 
 

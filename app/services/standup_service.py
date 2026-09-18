@@ -331,7 +331,7 @@ async def run_daily_standup():
 
 @tasks.loop(seconds=60)
 async def standup_scheduler():
-    now = datetime.now()
+    now = datetime.now(timezone.utc)
     if now.hour == 9 and now.minute == 0:
         global last_standup_run_date
         today_str = now.date().isoformat()

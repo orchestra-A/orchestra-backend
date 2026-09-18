@@ -172,13 +172,28 @@ async def deadline_check_job():
 
     db = SessionLocal()
     try:
-        now = datetime.now(timezone.utc).isoformat()
+        now_dt = datetime.now(timezone.utc)
+        now = now_dt.isoformat()
         db_tasks = db.query(TaskTable.id, TaskTable.title, TaskTable.deadline).filter(
             TaskTable.status.notin_(["completed", "halted", "blocked"]),
             TaskTable.deadline.isnot(None),
         ).all()
         
-        stale_task_records = [t for t in db_tasks if t.deadline < now]
+        stale_task_records = []
+        for t in db_tasks:
+            if not t.deadline:
+                continue
+            try:
+                deadline_clean = t.deadline.replace("Z", "+00:00")
+                deadline_dt = datetime.fromisoformat(deadline_clean)
+                if deadline_dt.tzinfo is None:
+                    deadline_dt = deadline_dt.replace(tzinfo=timezone.utc)
+                if deadline_dt < now_dt:
+                    stale_task_records.append(t)
+            except Exception:
+                # Fallback to string comparison if parsing fails
+                if t.deadline < now:
+                    stale_task_records.append(t)
     except Exception as e:
         print(f"[SCHEDULER] Error checking deadlines: {e}")
         stale_task_records = []
