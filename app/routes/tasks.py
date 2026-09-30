@@ -374,7 +374,7 @@ async def ai_reassign_task(task_id: str, request: Request):
     finally:
         db.close()
 
-    ai_service_url = os.getenv("AI_SERVICE_URL", "https://orchestra-ai-36zm.onrender.com")
+    ai_service_url = os.getenv("AI_SERVICE_URL", "https://orchestra-ai-74us.onrender.com")
     internal_api_key = os.getenv("INTERNAL_API_KEY", "")
 
     url = f"{ai_service_url}/tasks/{task_id}/ai-assign"

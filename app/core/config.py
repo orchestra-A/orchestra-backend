@@ -11,9 +11,9 @@ GOOGLE_CLIENT_SECRET = os.getenv("GOOGLE_CLIENT_SECRET")
 BACKEND_URL = os.getenv("BACKEND_URL", "http://localhost:8000")
 FRONTEND_URL = os.getenv("FRONTEND_URL", "https://orchestra-frontend-roan.vercel.app")
 
-GRAPH_API_URL = os.getenv("GRAPH_API_URL", "https://orchestra-ai-36zm.onrender.com")
+GRAPH_API_URL = os.getenv("GRAPH_API_URL", "https://orchestra-ai-74us.onrender.com")
 INTERNAL_API_KEY = os.getenv("INTERNAL_API_KEY", "")
 
-AI_SERVICE_URL = os.getenv("AI_SERVICE_URL", "https://orchestra-ai-36zm.onrender.com")
+AI_SERVICE_URL = os.getenv("AI_SERVICE_URL", "https://orchestra-ai-74us.onrender.com")
 
 DISCORD_ALLOWED_CHANNEL_ID = int(os.getenv("DISCORD_CHANNEL_ID", "1509182463493013526"))
