@@ -182,7 +182,7 @@ DISCORD_CLIENT_SECRET=your_discord_client_secret
 DISCORD_BOT_TOKEN=your_discord_bot_token
 GOOGLE_CLIENT_ID=your_google_client_id
 GOOGLE_CLIENT_SECRET=your_google_client_secret
-GRAPH_API_URL=https://orchestra-ai-36zm.onrender.com
+GRAPH_API_URL=https://orchestra-ai-74us.onrender.com
 INTERNAL_API_KEY=your_internal_api_key
 ```
 
@@ -267,7 +267,7 @@ The scheduler runs three recurring tasks:
 
 | Service | URL |
 |---------|-----|
-| AI Server | https://orchestra-ai-36zm.onrender.com |
+| AI Server | https://orchestra-ai-74us.onrender.com |
 | Backend | https://orchestra-backend-30fy.onrender.com |
 
 ## Stack
